@@ -160,6 +160,10 @@
   }
   .row-table td{padding:4px 6px; vertical-align:top;}
   .row-table td input, .row-table td select{width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px;}
+  .row-table td textarea.autogrow{
+    display:block; width:100%; min-height:32px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;
+    font:inherit; line-height:1.45; resize:none; overflow:hidden; box-sizing:border-box;
+  }
   .row-del{background:transparent; border:none; color:var(--muted); font-size:15px; padding:6px; border-radius:6px;}
   .row-del:hover{color:var(--danger); background:var(--danger-soft);}
   .add-row-btn{
@@ -191,7 +195,7 @@
     text-align:left; padding:7px 10px; background:var(--surface-2); color:var(--ink-soft);
     font-size:11px; text-transform:uppercase; letter-spacing:.03em; font-weight:700; border-bottom:1px solid var(--border);
   }
-  .detail-table td{padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top;}
+  .detail-table td{padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; white-space:pre-wrap; overflow-wrap:anywhere;}
   .detail-table tr:last-child td{border-bottom:none;}
   .prose{white-space:pre-wrap; font-size:13.5px; color:var(--ink-soft); line-height:1.6;}
   .tag-list{display:flex; flex-wrap:wrap; gap:6px;}
@@ -328,6 +332,12 @@
     const slot = TIME_SLOTS.find(function(s){ return s.value === value; });
     return slot ? slot.label : (value || '');
   }
+  function timeRangeLabel(start, end){
+    const a = timeLabelFor(start), b = timeLabelFor(end);
+    if(a && b) return a + ' – ' + b;
+    if(b) return 'Until ' + b;
+    return a;
+  }
   function timeSelectHtml(path, selected){
     const opts = TIME_SLOTS.map(function(s){ return '<option value="'+s.value+'"'+(selected===s.value?' selected':'')+'>'+s.label+'</option>'; }).join('');
     return '<select data-bind="'+path+'"><option value=""></option>'+opts+'</select>';
@@ -349,7 +359,7 @@
   }
 
   function newEventSpaceSession(){
-    return { day:'', dayEnd:'', time:'', session:'', orientation:'', orientationNotes:'', spaces:[], tableTypes:[], numTables:'', chairTypes:[], numChairs:'', avNeeds:[], staff:[], notes:'' };
+    return { day:'', dayEnd:'', time:'', timeEnd:'', session:'', orientation:'', orientationNotes:'', spaces:[], tableTypes:[], numTables:'', chairTypes:[], numChairs:'', avNeeds:[], staff:[], notes:'' };
   }
 
   function formatDateRange(start, end){
@@ -432,10 +442,10 @@
         {day:'Sat 9/26', time:'10:00 AM', activity:'Trail hike (moderate)', location:'Beaver Creek trailhead', staff:'1 guide', notes:'Optional — ~30 expected'}
       ] };
     g.eventSpace = { notes:'', schedule:[
-        { day:'2026-09-25', time:'14:00', session:'Partial Day', orientation:'Custom', orientationNotes:'Theater-style rows facing the stage', spaces:['Sunrise Hall'], tableTypes:['Banquet 8 Ft'], numTables:6,
+        { day:'2026-09-25', time:'14:00', timeEnd:'17:00', session:'Partial Day', orientation:'Custom', orientationNotes:'Theater-style rows facing the stage', spaces:['Sunrise Hall'], tableTypes:['Banquet 8 Ft'], numTables:6,
           chairTypes:['Blue'], numChairs:48, avNeeds:['Podium','Projector','Microphones'], staff:['Bradley','Kristen'],
           notes:'Leadership keynote + strategy session — theater seating for 42.' },
-        { day:'2026-09-26', dayEnd:'2026-09-27', time:'09:00', session:'Full Day', orientation:'Banquet', orientationNotes:'', spaces:['Moose Hollow'], tableTypes:['Rounds'], numTables:5,
+        { day:'2026-09-26', dayEnd:'2026-09-27', time:'09:00', timeEnd:'16:00', session:'Full Day', orientation:'Banquet', orientationNotes:'', spaces:['Moose Hollow'], tableTypes:['Rounds'], numTables:5,
           chairTypes:['White'], numChairs:42, avNeeds:['TV','Sonos'], staff:['Sam','Kylie'],
           notes:'Breakout workshops (3 groups), held over two days — 3 flip charts, markers.' }
       ] };
@@ -504,16 +514,83 @@
     }
   }
 
+  // ---- Talking to the Google Apps Script ----
+  // Every request gets a time limit, a readable error if Google sends back a web page
+  // instead of data, and one automatic retry for brief hiccups.
+  const REQUEST_TIMEOUT_MS = 25000;
+  let writeSeq = 0;          // bumps every time this browser saves or deletes
+  let writesInFlight = 0;    // saves/deletes currently on their way to the sheet
+  let pollInFlight = false;  // stops polls from piling on top of each other
+  let pollFailures = 0;      // consecutive failed polls
+
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+  async function apiRequest(method, payload){
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, REQUEST_TIMEOUT_MS) : null;
+    try{
+      const opts = { cache:'no-store', redirect:'follow' };
+      if(ctrl) opts.signal = ctrl.signal;
+      let url = API_URL;
+      if(method === 'GET'){
+        url += (url.indexOf('?') > -1 ? '&' : '?') + 'action=' + encodeURIComponent(payload.action) + '&_=' + Date.now();
+      } else {
+        opts.method = 'POST';
+        // Sent as plain text on purpose: a JSON content-type makes the browser ask
+        // Google for permission first, which Apps Script can't answer.
+        opts.headers = { 'Content-Type':'text/plain;charset=utf-8' };
+        opts.body = JSON.stringify(payload);
+      }
+      const resp = await fetch(url, opts);
+      const text = await resp.text();
+      let data;
+      try{ data = JSON.parse(text); }
+      catch(e){
+        const err = new Error('Google returned a web page instead of data. The Apps Script may need to be redeployed (Deploy → Manage deployments → New version) with access set to "Anyone".');
+        err.permanent = true;
+        throw err;
+      }
+      if(!data.ok){
+        const err = new Error(data.error || 'The shared sheet reported an error.');
+        err.permanent = true;
+        throw err;
+      }
+      return data;
+    }catch(e){
+      if(e && e.name === 'AbortError') throw new Error('The shared sheet took too long to respond.');
+      if(e && e.message === 'Failed to fetch') throw new Error('Could not reach the shared sheet (network problem).');
+      throw e;
+    }finally{
+      if(timer) clearTimeout(timer);
+    }
+  }
+
+  async function apiWithRetry(method, payload){
+    try{
+      return await apiRequest(method, payload);
+    }catch(e){
+      if(e && e.permanent) throw e;
+      await sleep(1500);
+      return await apiRequest(method, payload);
+    }
+  }
+
   async function refreshFromServer(silent){
     if(!apiConfigured()){
       state.mode = 'local';
       setSyncPill();
       return;
     }
+    // Don't poll while a save is on its way, and don't stack polls.
+    if(pollInFlight || writesInFlight > 0) return;
+    pollInFlight = true;
+    const seqAtStart = writeSeq;
     try{
-      const resp = await fetch(API_URL + '?action=list', {cache:'no-store'});
-      const data = await resp.json();
-      if(!data.ok) throw new Error(data.error || 'Server error');
+      const data = await apiWithRetry('GET', { action:'list' });
+      // If this browser saved something while the list was loading, the list is
+      // already out of date — throw it away instead of overwriting the new save.
+      if(seqAtStart !== writeSeq || writesInFlight > 0) return;
+      pollFailures = 0;
       state.groups = data.groups || [];
       state.mode = 'remote';
       saveLocal();
@@ -521,9 +598,16 @@
       // Don't yank the list/detail view out from under someone mid-edit.
       if(state.view !== 'edit') render();
     }catch(err){
-      state.mode = 'local';
-      setSyncPill();
-      if(!silent) alertInline('Could not reach the shared sheet — showing your last synced copy.', 'error');
+      pollFailures++;
+      console.warn('Group Summaries sync:', err && err.message);
+      // One missed poll is usually a Google hiccup — only show Offline after two in a row.
+      if(pollFailures >= 2 || state.mode !== 'remote'){
+        state.mode = 'local';
+        setSyncPill();
+      }
+      if(!silent) alertInline('Could not reach the shared sheet — showing your last synced copy. (' + err.message + ')', 'error');
+    }finally{
+      pollInFlight = false;
     }
   }
 
@@ -531,23 +615,29 @@
     loadLocal();
     render();
     await refreshFromServer(true);
-    pollTimer = setInterval(function(){ refreshFromServer(true); }, POLL_MS);
+    pollTimer = setInterval(function(){ if(!document.hidden) refreshFromServer(true); }, POLL_MS);
+    // Catch up right away when someone comes back to the tab.
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden) refreshFromServer(true); });
   }
 
   async function persistGroup(g){
     if(!g.id) g.id = uid();
     g.updatedAt = new Date().toISOString();
     if(apiConfigured()){
-      const resp = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'save', group:g }) });
-      const data = await resp.json();
-      if(!data.ok) throw new Error(data.error || 'Could not save');
-      const saved = data.group;
-      const idx = state.groups.findIndex(function(x){ return x.id === saved.id; });
-      if(idx >= 0) state.groups[idx] = saved; else state.groups.push(saved);
-      state.mode = 'remote';
-      saveLocal();
-      setSyncPill();
-      return saved.id;
+      writeSeq++; writesInFlight++;
+      try{
+        const data = await apiWithRetry('POST', { action:'save', group:g });
+        const saved = data.group || g;
+        const idx = state.groups.findIndex(function(x){ return x.id === saved.id; });
+        if(idx >= 0) state.groups[idx] = saved; else state.groups.push(saved);
+        state.mode = 'remote';
+        pollFailures = 0;
+        saveLocal();
+        setSyncPill();
+        return saved.id;
+      }finally{
+        writeSeq++; writesInFlight--;
+      }
     } else {
       const idx = state.groups.findIndex(function(x){ return x.id === g.id; });
       if(idx >= 0) state.groups[idx] = g; else state.groups.push(g);
@@ -558,9 +648,15 @@
 
   async function deleteGroup(id){
     if(apiConfigured()){
+      writeSeq++; writesInFlight++;
       try{
-        await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'delete', id:id }) });
-      }catch(e){}
+        await apiWithRetry('POST', { action:'delete', id:id });
+      }catch(e){
+        alertInline('Could not delete — ' + e.message);
+        return;
+      }finally{
+        writeSeq++; writesInFlight--;
+      }
     }
     state.groups = state.groups.filter(function(g){ return g.id !== id; });
     saveLocal();
@@ -572,7 +668,7 @@
     setSyncPill();
     const app = document.getElementById('app');
     if(state.view === 'list') app.innerHTML = renderListView();
-    else if(state.view === 'edit') renderEditView(app);
+    else if(state.view === 'edit'){ renderEditView(app); sizeAutoGrow(app); }
     else if(state.view === 'detail') app.innerHTML = renderDetailView();
     else if(state.view === 'tasks') app.innerHTML = renderTasksView();
   }
@@ -682,6 +778,9 @@
       if(c.type === 'checkbox'){
         return '<td style="text-align:center;"><input type="checkbox" data-bind="'+path+'.'+i+'.'+c.key+'" '+(row[c.key]?'checked':'')+'></td>';
       }
+      if(c.type === 'autogrow'){
+        return '<td><textarea class="autogrow" rows="1" data-bind="'+path+'.'+i+'.'+c.key+'" placeholder="'+esc(c.placeholder||'')+'">'+val+'</textarea></td>';
+      }
       if(c.type === 'datalist'){
         return '<td><input data-bind="'+path+'.'+i+'.'+c.key+'" type="text" list="'+esc(c.listId)+'" placeholder="'+esc(c.placeholder||'')+'" value="'+val+'"></td>';
       }
@@ -705,7 +804,8 @@
       '<div class="field-grid">' +
         '<label class="field"><span>Start date</span><input type="date" data-bind="'+base+'.day" value="'+esc(s.day||'')+'"></label>' +
         '<label class="field"><span>End date (optional)</span><input type="date" data-bind="'+base+'.dayEnd" value="'+esc(s.dayEnd||'')+'"></label>' +
-        '<label class="field"><span>Time</span>'+timeSelectHtml(base+'.time', s.time)+'</label>' +
+        '<label class="field"><span>Start time</span>'+timeSelectHtml(base+'.time', s.time)+'</label>' +
+        '<label class="field"><span>End time</span>'+timeSelectHtml(base+'.timeEnd', s.timeEnd)+'</label>' +
         '<label class="field"><span>Session</span>'+plainSelectHtml(base+'.session', SESSION_TYPES, s.session)+'</label>' +
         '<label class="field"><span># Tables</span><input type="number" min="0" data-bind="'+base+'.numTables" value="'+esc(s.numTables==null?'':s.numTables)+'"></label>' +
         '<label class="field"><span># Chairs</span><input type="number" min="0" data-bind="'+base+'.numChairs" value="'+esc(s.numChairs==null?'':s.numChairs)+'"></label>' +
@@ -736,18 +836,26 @@
 
   function renderRowsTable(path, columns){
     const arr = getPath(draft, path) || [];
-    const head = columns.map(function(c){ return '<th>'+esc(c.label)+'</th>'; }).join('') + '<th style="width:32px"></th>';
+    const head = columns.map(function(c){ return '<th'+(c.width?' style="width:'+c.width+'"':'')+'>'+esc(c.label)+'</th>'; }).join('') + '<th style="width:32px"></th>';
     const body = arr.map(function(row,i){ return tableRowHtml(path, i, row, columns); }).join('');
     tableConfigs[path] = columns;
     return '<div class="table-wrap"><table class="row-table"><thead><tr>'+head+'</tr></thead><tbody id="tbody-'+path.replace(/\./g,'-')+'">'+body+'</tbody></table></div>' +
       '<button type="button" class="add-row-btn" data-add="'+path+'">+ Add row</button>';
   }
 
+  function autoGrow(el){
+    el.style.height = 'auto';
+    el.style.height = (el.scrollHeight + 2) + 'px';
+  }
+  function sizeAutoGrow(root){
+    (root || document).querySelectorAll('textarea.autogrow').forEach(autoGrow);
+  }
+
   function refreshTable(path){
     const columns = tableConfigs[path];
     const arr = getPath(draft, path) || [];
     const tbody = document.getElementById('tbody-'+path.replace(/\./g,'-'));
-    if(tbody) tbody.innerHTML = arr.map(function(row,i){ return tableRowHtml(path, i, row, columns); }).join('');
+    if(tbody){ tbody.innerHTML = arr.map(function(row,i){ return tableRowHtml(path, i, row, columns); }).join(''); sizeAutoGrow(tbody); }
   }
 
   function field(label, path, type, opts){
@@ -872,7 +980,7 @@
       '<div class="section-card"><div class="section-title"><span class="section-index">9</span> Communication Log</div>' +
         '<p class="muted-note" style="margin:-8px 0 12px;">Every call or email with the group, so the whole team has the history.</p>' +
         renderRowsTable('communicationLog', [
-          {key:'date', label:'Date', type:'date'}, {key:'contactName', label:'Group contact'}, {key:'staffName', label:'Our staff'}, {key:'notes', label:'Notes'}
+          {key:'date', label:'Date', type:'date', width:'150px'}, {key:'contactName', label:'Group contact', width:'18%'}, {key:'staffName', label:'Our staff', width:'18%'}, {key:'notes', label:'Notes', type:'autogrow', width:'50%'}
         ]) +
       '</div>' +
 
@@ -929,7 +1037,12 @@
     box.style.color = color;
     box.textContent = msg;
     app.prepend(box);
-    setTimeout(function(){ box.remove(); }, kind === 'success' ? 4500 : 8000);
+    if(kind !== 'success'){
+      box.style.position = 'sticky'; box.style.top = '10px'; box.style.zIndex = '50';
+      box.style.background = 'var(--danger-soft, #fdecea)';
+      try{ box.scrollIntoView({behavior:'smooth', block:'nearest'}); }catch(e){}
+    }
+    setTimeout(function(){ box.remove(); }, kind === 'success' ? 4500 : 12000);
   }
 
   /* ---------------- detail view ---------------- */
@@ -956,7 +1069,7 @@
   }
 
   function renderEventSpaceSessionDetail(s){
-    const headerBits = [formatDateRange(s.day, s.dayEnd), timeLabelFor(s.time), s.session].filter(Boolean).join('  ·  ');
+    const headerBits = [formatDateRange(s.day, s.dayEnd), timeRangeLabel(s.time, s.timeEnd), s.session].filter(Boolean).join('  ·  ');
     const orientationText = s.orientation === 'Custom' ? ('Custom' + (s.orientationNotes ? ' — ' + s.orientationNotes : '')) : (s.orientation || '—');
     return '<div class="subcard">' +
       '<div class="subcard-title" style="margin-bottom:10px;">'+esc(headerBits || 'Session')+'</div>' +
@@ -1168,7 +1281,7 @@
   }
 
   function pdfEventSpaceSession(doc, s, x, y, width){
-    const headerLine = [formatDateRange(s.day, s.dayEnd), timeLabelFor(s.time), s.session].filter(Boolean).join('  ·  ') || 'Session';
+    const headerLine = [formatDateRange(s.day, s.dayEnd), timeRangeLabel(s.time, s.timeEnd), s.session].filter(Boolean).join('  ·  ') || 'Session';
     const lines = [];
     if(s.orientation) lines.push('Orientation: ' + s.orientation + (s.orientation === 'Custom' && s.orientationNotes ? ' — ' + s.orientationNotes : ''));
     if(s.spaces && s.spaces.length) lines.push('Space: ' + s.spaces.join(', '));
@@ -1345,11 +1458,9 @@
         if(apiConfigured()){
           const dataUrl = await readFileAsDataURL(file);
           const base64 = dataUrl.split(',')[1] || '';
-          const resp = await fetch(API_URL, { method:'POST', body: JSON.stringify({
+          const data = await apiRequest('POST', {
             action:'uploadAttachment', name:file.name, mimeType:file.type, base64:base64
-          }) });
-          const data = await resp.json();
-          if(!data.ok) throw new Error(data.error || 'Upload failed');
+          });
           current.push(data.attachment);
         } else {
           // No shared backend configured yet — keep the file inline so at least this browser has it.
@@ -1574,6 +1685,7 @@
       return;
     }
     if(state.view !== 'edit' || !draft) return;
+    if(t.classList && t.classList.contains('autogrow')) autoGrow(t);
     if(t.dataset.bind){
       let val = t.value;
       if(t.type === 'checkbox') val = t.checked;
@@ -1598,6 +1710,7 @@
   appEl.addEventListener('click', handleAppClick);
   appEl.addEventListener('input', handleAppInputOrChange);
   appEl.addEventListener('change', handleAppInputOrChange);
+  window.addEventListener('resize', function(){ if(state.view === 'edit') sizeAutoGrow(appEl); });
   document.getElementById('navList').addEventListener('click', function(){ state.view='list'; draft=null; render(); });
   document.getElementById('navTasks').addEventListener('click', function(){ state.view='tasks'; draft=null; render(); });
   document.getElementById('navNew').addEventListener('click', startNew);
