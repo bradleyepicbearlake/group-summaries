@@ -290,6 +290,12 @@
     if(isNaN(dt.getTime())) return d;
     return dt.toLocaleDateString('en-US', {month:'short', day:'numeric'});
   }
+  function fmtDateDay(d){
+    if(!d) return '—';
+    const dt = new Date(d + 'T00:00:00');
+    if(isNaN(dt.getTime())) return d;
+    return dt.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+  }
   function nightsBetween(a,b){
     if(!a||!b) return null;
     const d1=new Date(a+'T00:00:00'), d2=new Date(b+'T00:00:00');
@@ -444,8 +450,8 @@
         {day:'Sat 9/26', meal:'Dinner', time:'7:00 PM', location:'Sunrise Hall', headcount:42, notes:'Banquet + awards'}
       ] };
     g.recreation = { activities:[
-        {day:'Fri 9/25', time:'9:00 AM', activity:'Guided kayaking', location:'Bear Lake shoreline', staff:'2 recreation guides', notes:'Life jackets sized in advance'},
-        {day:'Sat 9/26', time:'10:00 AM', activity:'Trail hike (moderate)', location:'Beaver Creek trailhead', staff:'1 guide', notes:'Optional — ~30 expected'}
+        {day:'2026-09-25', time:'9:00 AM', activity:'Guided kayaking', location:'Bear Lake shoreline', staff:'2 recreation guides', notes:'Life jackets sized in advance'},
+        {day:'2026-09-26', time:'10:00 AM', activity:'Trail hike (moderate)', location:'Beaver Creek trailhead', staff:'1 guide', notes:'Optional — ~30 expected'}
       ] };
     g.eventSpace = { notes:'', schedule:[
         { day:'2026-09-25', time:'14:00', timeEnd:'17:00', session:'Partial Day', orientation:'Custom', orientationNotes:'Theater-style rows facing the stage', spaces:['Sunrise Hall'], tableTypes:['Banquet 8 Ft'], numTables:6,
@@ -971,7 +977,7 @@
       '<div class="section-card"><div class="section-title"><span class="section-index">5</span> Recreation</div>' +
         '<div class="field" style="margin-bottom:8px;"><span>Activities booked</span></div>' +
         renderRowsTable('recreation.activities', [
-          {key:'day', label:'Day'}, {key:'time', label:'Time'}, {key:'activity', label:'Activity'},
+          {key:'day', label:'Date', type:'date', width:'150px'}, {key:'time', label:'Time'}, {key:'activity', label:'Activity'},
           {key:'location', label:'Location'}, {key:'staff', label:'Staff / guide'}, {key:'notes', label:'Notes'}
         ]) +
       '</div>' +
@@ -1195,7 +1201,7 @@
       '</div>' +
 
       '<div class="section-card"><div class="section-title"><span class="section-index">5</span> Recreation</div>' +
-        detailTable(g.recreation.activities, [{key:'day',label:'Day'},{key:'time',label:'Time'},{key:'activity',label:'Activity'},{key:'location',label:'Location'},{key:'staff',label:'Staff / guide'},{key:'notes',label:'Notes'}]) +
+        detailTable(g.recreation.activities, [{key:'day',label:'Date',format:fmtDateDay},{key:'time',label:'Time'},{key:'activity',label:'Activity'},{key:'location',label:'Location'},{key:'staff',label:'Staff / guide'},{key:'notes',label:'Notes'}]) +
       '</div>' +
 
       '<div class="section-card"><div class="section-title"><span class="section-index">6</span> Event Space</div>' +
@@ -1279,7 +1285,8 @@
     let curY = drawHeader(y);
     rows.forEach(function(row){
       const cellLines = columns.map(function(c){
-        const val = String(row[c.key] || '—');
+        const raw = row[c.key];
+        const val = String((c.format && raw) ? c.format(raw) : (raw || '—'));
         return doc.splitTextToSize(val, c.width - padX*2);
       });
       const maxLines = Math.max.apply(null, cellLines.map(function(l){ return l.length; }));
@@ -1383,7 +1390,7 @@
     y = pdfProse(doc, g.catering.notes, marginX, y, pageW-marginX*2);
 
     y = pdfSectionHeader(doc, '5. Recreation', marginX, y);
-    y = pdfTable(doc, marginX, y, [{key:'day',label:'Day',width:65},{key:'time',label:'Time',width:55},{key:'activity',label:'Activity',width:120},{key:'location',label:'Location',width:110},{key:'staff',label:'Staff',width:75},{key:'notes',label:'Notes',width:107}], g.recreation.activities);
+    y = pdfTable(doc, marginX, y, [{key:'day',label:'Date',width:65,format:fmtDateDay},{key:'time',label:'Time',width:55},{key:'activity',label:'Activity',width:120},{key:'location',label:'Location',width:110},{key:'staff',label:'Staff',width:75},{key:'notes',label:'Notes',width:107}], g.recreation.activities);
 
     y = pdfSectionHeader(doc, '6. Event Space', marginX, y);
     if(!g.eventSpace.schedule || !g.eventSpace.schedule.length){
