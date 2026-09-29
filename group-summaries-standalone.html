@@ -124,6 +124,9 @@
   .pill.confirmed{background:var(--good-soft); color:var(--good);}
   .pill.example{background:var(--surface-2); color:var(--muted);}
   .pill.monthyear{background:var(--accent-soft); color:var(--accent-ink);}
+  .pill.category{background:var(--surface-2); color:var(--ink-soft); border:1px solid var(--border);}
+  .category-tabs{display:flex; gap:6px; margin:-4px 0 14px; flex-wrap:wrap; align-items:center;}
+  .category-tabs .ct-label{font-size:11.5px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-right:4px;}
   .empty-state{
     text-align:center; padding:60px 20px; color:var(--muted); border:1px dashed var(--border); border-radius:var(--radius);
   }
@@ -149,6 +152,8 @@
     padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm);
   }
   .field textarea{resize:vertical; min-height:56px;}
+  textarea.autogrow{resize:none; overflow:hidden; line-height:1.45;}
+  .field textarea.autogrow.oneline, .row-table td textarea.autogrow.oneline{min-height:0; white-space:pre-wrap; overflow-wrap:anywhere;}
   .field.wide{grid-column:1 / -1;}
   .check-row{display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:4px;}
   .check-row label{display:flex; align-items:center; gap:6px; font-size:13.5px;}
@@ -305,6 +310,7 @@
     return dt.toLocaleDateString('en-US', {month:'long', year:'numeric'});
   }
 
+  const CATEGORIES = ["Retreat","Wedding","Reunion"];
   const PROPERTIES = ["Sunrise Resort","Beaver Creek Lodge","Eagle's Roost","Oso Blue Yurts","Beach House","Condos"];
   const EVENT_SPACES = ["Sunrise Hall","Moose Hollow","Azure Cove","Cisco Board Room","Beaver Creek Lodge Gathering Room"];
   const SESSION_TYPES = ["Partial Day","Full Day"];
@@ -396,7 +402,7 @@
   function emptyGroup(){
     const now = new Date().toISOString();
     return {
-      status:'draft',
+      status:'draft', categories:[],
       groupName:'', orgName:'', contactName:'', contactPhone:'', contactEmail:'',
       arrivalDate:'', departureDate:'', totalGuests:'', coordinator:'',
       transportation:{ mode:'', arrivalDetails:'', departureDetails:'', shuttleNeeded:false, notes:'' },
@@ -417,7 +423,7 @@
   function exampleGroup(){
     const g = emptyGroup();
     Object.assign(g, {
-      status:'confirmed',
+      status:'confirmed', categories:['Retreat'],
       groupName:'Meridian Analytics — Leadership Offsite', orgName:'Meridian Analytics',
       contactName:'Dana Ruiz', contactPhone:'(415) 555-0148', contactEmail:'dana.ruiz@meridiananalytics.com',
       arrivalDate:'2026-09-24', departureDate:'2026-09-27', totalGuests:42, coordinator:'Bradley',
@@ -476,7 +482,7 @@
   // Until this is filled in, the tool works fine for one person but nothing syncs between browsers.
   const API_URL = 'https://script.google.com/macros/s/AKfycbwF1r0ntuEhPccMCygw_lPz7fVZBQsHfAG6bClle2G6o44rGqcWGJssT1aAhYf3bu2zVw/exec';
 
-  const state = { view:'list', currentId:null, groups:[], mode:'connecting', search:'', filter:'all', monthFilter:'all', yearFilter:'all' };
+  const state = { view:'list', currentId:null, groups:[], mode:'connecting', search:'', filter:'all', monthFilter:'all', yearFilter:'all', categoryFilter:'all' };
   let draft = null;
   let pollTimer = null;
   const tableConfigs = {};
@@ -688,6 +694,9 @@
     if(state.monthFilter && state.monthFilter !== 'all'){
       groups = groups.filter(function(g){ return (monthYearKey(g.arrivalDate) || 'none') === state.monthFilter; });
     }
+    if(state.categoryFilter && state.categoryFilter !== 'all'){
+      groups = groups.filter(function(g){ return (g.categories || []).indexOf(state.categoryFilter) > -1; });
+    }
     if(state.yearFilter && state.yearFilter !== 'all'){
       groups = groups.filter(function(g){
         const k = monthYearKey(g.arrivalDate);
@@ -712,6 +721,7 @@
         '<div class="gc-dates mono">'+esc(dateStr)+'</div>' +
         '<div class="gc-guests mono">'+(g.totalGuests? esc(g.totalGuests)+' guests':'—')+'</div>' +
         '<div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">' +
+          (g.categories || []).map(function(c){ return '<span class="pill category">'+esc(c)+'</span>'; }).join('') +
           '<span class="pill monthyear">'+esc(myLabel)+'</span>' +
           '<span class="pill '+statusClass+'">'+statusLabel+'</span>' +
         '</div>' +
@@ -748,10 +758,19 @@
     return '<div class="year-tabs" id="yearTabsRow">'+tabs+'</div>';
   }
 
+  function renderCategoryTabsHtml(){
+    const tabs = ['all'].concat(CATEGORIES).map(function(c){
+      const label = c === 'all' ? 'All Categories' : c;
+      return '<button type="button" class="year-tab'+(state.categoryFilter===c?' active':'')+'" data-category-tab="'+esc(c)+'">'+esc(label)+'</button>';
+    }).join('');
+    return '<div class="category-tabs" id="categoryTabsRow"><span class="ct-label">Category</span>'+tabs+'</div>';
+  }
+
   function renderListView(){
     return '' +
       '<div class="list-head"><div><h1>All Groups</h1><p>Every upcoming and past retreat, in one place — click a group for its full operational summary.</p></div></div>' +
       renderYearTabsHtml() +
+      renderCategoryTabsHtml() +
       '<div class="list-controls">' +
         '<input class="search-input" id="searchInput" type="text" placeholder="Search by group or organization…" value="'+esc(state.search)+'">' +
         '<select class="filter-select" id="filterSelect">' +
@@ -784,6 +803,9 @@
       if(c.type === 'datalist'){
         return '<td><input data-bind="'+path+'.'+i+'.'+c.key+'" type="text" list="'+esc(c.listId)+'" placeholder="'+esc(c.placeholder||'')+'" value="'+val+'"></td>';
       }
+      if(!c.type || c.type === 'text'){
+        return '<td><textarea class="autogrow oneline" rows="1" data-bind="'+path+'.'+i+'.'+c.key+'" placeholder="'+esc(c.placeholder||'')+'">'+val+'</textarea></td>';
+      }
       return '<td><input data-bind="'+path+'.'+i+'.'+c.key+'" type="'+(c.type||'text')+'" placeholder="'+esc(c.placeholder||'')+'" value="'+val+'"></td>';
     }).join('');
     return '<tr>'+cells+'<td><button type="button" class="row-del" data-remove="'+path+'.'+i+'" title="Remove row">✕</button></td></tr>';
@@ -812,14 +834,14 @@
       '</div>' +
       '<div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:4px;">' +
         '<label class="field" style="min-width:160px; flex:0 0 auto;"><span>Orientation</span>'+plainSelectHtml(base+'.orientation', ORIENTATIONS, s.orientation)+'</label>' +
-        '<label class="field" data-orientation-notes style="flex:1; min-width:200px;'+(s.orientation==='Custom'?'':' display:none;')+'"><span>Custom orientation — details</span><input type="text" data-bind="'+base+'.orientationNotes" value="'+esc(s.orientationNotes||'')+'" placeholder="Describe the custom layout"></label>' +
+        '<label class="field" data-orientation-notes style="flex:1; min-width:200px;'+(s.orientation==='Custom'?'':' display:none;')+'"><span>Custom orientation — details</span><textarea class="autogrow oneline" rows="1" data-bind="'+base+'.orientationNotes" placeholder="Describe the custom layout">'+esc(s.orientationNotes||'')+'</textarea></label>' +
       '</div>' +
       checkGroup('Space', base+'.spaces', EVENT_SPACES, s.spaces) +
       checkGroup('Table Type', base+'.tableTypes', TABLE_TYPES, s.tableTypes) +
       checkGroup('Chair Type', base+'.chairTypes', CHAIR_TYPES, s.chairTypes) +
       checkGroup('AV / Equipment needs', base+'.avNeeds', AV_OPTIONS, s.avNeeds) +
       checkGroup('Staff', base+'.staff', STAFF_OPTIONS, s.staff) +
-      '<div class="field" style="margin-top:10px;"><span>Notes</span><textarea data-bind="'+base+'.notes">'+esc(s.notes||'')+'</textarea></div>' +
+      '<div class="field" style="margin-top:10px;"><span>Notes</span><textarea class="autogrow" data-bind="'+base+'.notes">'+esc(s.notes||'')+'</textarea></div>' +
     '</div>';
   }
 
@@ -831,7 +853,7 @@
 
   function refreshEventSpaceSessions(){
     const el = document.getElementById('eventSpaceSessions');
-    if(el) el.innerHTML = renderEventSpaceSessionsHtml();
+    if(el){ el.innerHTML = renderEventSpaceSessionsHtml(); sizeAutoGrow(el); }
   }
 
   function renderRowsTable(path, columns){
@@ -844,6 +866,7 @@
   }
 
   function autoGrow(el){
+    if(!el.offsetParent) return;
     el.style.height = 'auto';
     el.style.height = (el.scrollHeight + 2) + 'px';
   }
@@ -863,7 +886,9 @@
     const val = getPath(draft, path);
     let input;
     if(type === 'textarea'){
-      input = '<textarea data-bind="'+path+'" placeholder="'+esc(opts.placeholder||'')+'">'+esc(val||'')+'</textarea>';
+      input = '<textarea class="autogrow" data-bind="'+path+'" placeholder="'+esc(opts.placeholder||'')+'">'+esc(val||'')+'</textarea>';
+    } else if(type === 'text'){
+      input = '<textarea class="autogrow oneline" rows="1" data-bind="'+path+'" placeholder="'+esc(opts.placeholder||'')+'">'+esc(val==null?'':val)+'</textarea>';
     } else if(type === 'select'){
       const optHtml = opts.options.map(function(o){ return '<option value="'+esc(o.value)+'"'+(val===o.value?' selected':'')+'>'+esc(o.label)+'</option>'; }).join('');
       input = '<select data-bind="'+path+'">'+optHtml+'</select>';
@@ -882,6 +907,9 @@
       '<p>Fill in what applies — leave the rest blank. Everyone on the team will see whatever you save here.</p></div></div>' +
 
       '<div class="section-card"><div class="section-title"><span class="section-index">1</span> Group &amp; Contact</div>' +
+        '<div class="field" style="margin-bottom:14px;"><span>Category</span><div class="check-row">' +
+          CATEGORIES.map(function(c){ return '<label><input type="checkbox" data-toggle-array="categories" data-value="'+esc(c)+'" '+((draft.categories||[]).indexOf(c)>-1?'checked':'')+'> '+esc(c)+'</label>'; }).join('') +
+        '</div></div>' +
         '<div class="field-grid">' +
           field('Group / event name','groupName','text',{wide:true,placeholder:'e.g. Meridian Analytics — Leadership Offsite'}) +
           field('Organization','orgName','text') +
@@ -1110,7 +1138,10 @@
       '<button class="btn ghost" id="backToListBtn" style="margin-bottom:14px;">&larr; All Groups</button>' +
       '<div class="detail-head">' +
         '<div class="detail-title">' +
-          '<span class="pill '+(g.status||'draft')+'" style="margin-bottom:8px;display:inline-flex;">'+(g.status==='confirmed'?'Confirmed':'Draft')+'</span>' +
+          '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
+            '<span class="pill '+(g.status||'draft')+'" style="display:inline-flex;">'+(g.status==='confirmed'?'Confirmed':'Draft')+'</span>' +
+            (g.categories || []).map(function(c){ return '<span class="pill category" style="display:inline-flex;">'+esc(c)+'</span>'; }).join('') +
+          '</div>' +
           '<h1>'+esc(g.groupName||'Untitled group')+'</h1>' +
           '<div class="gc-org">'+esc(g.orgName||'')+'</div>' +
         '</div>' +
@@ -1124,6 +1155,7 @@
 
       '<div class="section-card"><div class="section-title"><span class="section-index">1</span> Group &amp; Contact</div>' +
         '<div class="kv-grid">' +
+          '<div class="kv"><span class="kv-label">Category</span><span class="kv-value">'+esc((g.categories||[]).join(', ') || '—')+'</span></div>' +
           '<div class="kv"><span class="kv-label">Arrival</span><span class="kv-value mono">'+esc(fmtDate(g.arrivalDate))+'</span></div>' +
           '<div class="kv"><span class="kv-label">Departure</span><span class="kv-value mono">'+esc(fmtDate(g.departureDate))+'</span></div>' +
           '<div class="kv"><span class="kv-label">Length of stay</span><span class="kv-value mono">'+(nights? nights+' nights':'—')+'</span></div>' +
@@ -1328,7 +1360,8 @@
     y = pdfKvPairs(doc, [
       ['Arrival', fmtDate(g.arrivalDate)], ['Departure', fmtDate(g.departureDate)], ['Length of stay', nights? nights+' nights':'—'],
       ['Total guests', g.totalGuests], ['Coordinator', g.coordinator], ['Status', g.status==='confirmed'?'Confirmed':'Draft'],
-      ['Contact', g.contactName], ['Phone', g.contactPhone], ['Email', g.contactEmail]
+      ['Contact', g.contactName], ['Phone', g.contactPhone], ['Email', g.contactEmail],
+      ['Category', (g.categories||[]).join(', ') || '—']
     ], marginX, y, 170);
 
     y = pdfSectionHeader(doc, '2. Transportation & Arrival', marginX, y);
@@ -1549,6 +1582,15 @@
     const dlAtt = e.target.closest('[data-download-attachment]');
     const yearTab = e.target.closest('[data-year-tab]');
 
+    const categoryTab = e.target.closest('[data-category-tab]');
+    if(state.view === 'list' && categoryTab){
+      state.categoryFilter = categoryTab.dataset.categoryTab;
+      const catRow = document.getElementById('categoryTabsRow');
+      if(catRow) catRow.outerHTML = renderCategoryTabsHtml();
+      document.getElementById('resultsContainer').innerHTML = renderListResults();
+      return;
+    }
+
     if(state.view === 'list' && yearTab){
       state.yearFilter = yearTab.dataset.yearTab;
       state.monthFilter = 'all';
@@ -1685,6 +1727,9 @@
       return;
     }
     if(state.view !== 'edit' || !draft) return;
+    if(t.classList && t.classList.contains('oneline') && /[\r\n]/.test(t.value)){
+      t.value = t.value.replace(/[\r\n]+/g, ' ');
+    }
     if(t.classList && t.classList.contains('autogrow')) autoGrow(t);
     if(t.dataset.bind){
       let val = t.value;
@@ -1694,7 +1739,7 @@
       if(/\.orientation$/.test(t.dataset.bind)){
         const subcard = t.closest('.subcard');
         const notesField = subcard && subcard.querySelector('[data-orientation-notes]');
-        if(notesField) notesField.style.display = (val === 'Custom') ? '' : 'none';
+        if(notesField){ notesField.style.display = (val === 'Custom') ? '' : 'none'; sizeAutoGrow(notesField); }
       }
     } else if(t.dataset.toggleArray){
       const arr = getPath(draft, t.dataset.toggleArray) || [];
@@ -1709,6 +1754,9 @@
   const appEl = document.getElementById('app');
   appEl.addEventListener('click', handleAppClick);
   appEl.addEventListener('input', handleAppInputOrChange);
+  appEl.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && e.target.classList && e.target.classList.contains('oneline')) e.preventDefault();
+  });
   appEl.addEventListener('change', handleAppInputOrChange);
   window.addEventListener('resize', function(){ if(state.view === 'edit') sizeAutoGrow(appEl); });
   document.getElementById('navList').addEventListener('click', function(){ state.view='list'; draft=null; render(); });
