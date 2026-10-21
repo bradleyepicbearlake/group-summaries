@@ -345,19 +345,63 @@
   const COMPANIES = ["Beaver Creek Lodge","Sunrise Resort","Epic Recreation"];
 
   /* ================= EDIT YOUR ROOM LISTS HERE =================
-     Each property's rooms/units, in the order you want them to appear in the
-     Room Assignments dropdowns. Change, add or remove names freely — just keep
-     each name in "quotes" with a comma between them. The property names on the
-     left must match the PROPERTIES list just below exactly.
-     (These are placeholders — replace them with your real room names.) */
+     Each property's rooms, in the order they appear in the Room Assignments
+     dropdowns. Each line is ["Room name", "Bed summary"]. The property names on
+     the left must match the PROPERTIES list just below exactly.
+     A property that isn't listed here (or has an empty list) gets a plain
+     text box for the room instead of a dropdown.
+     Sources: Sunrise Resort Bed Chart, Sunrise Condos Bed Chart, Beaver Creek
+     Lodge building map. Sofa sleepers in the condos are queens. */
   const PROPERTY_ROOMS = {
-    "Sunrise Resort":     ["Room 1","Room 2","Room 3","Room 4","Room 5","Room 6","Room 7","Room 8","Room 9","Room 10","Room 11","Room 12"],
-    "Beaver Creek Lodge": ["Room 1","Room 2","Room 3","Room 4","Room 5","Room 6","Room 7","Room 8"],
-    "Eagle's Roost":      ["Room 1","Room 2","Room 3","Room 4","Room 5"],
-    "Oso Blue Yurts":     ["Yurt 1","Yurt 2","Yurt 3","Yurt 4","Yurt 5","Yurt 6"],
-    "Beach House":        ["Room 1","Room 2","Room 3","Room 4"],
-    "Condos":             ["Condo 1","Condo 2","Condo 3","Condo 4"]
+    "Sunrise Resort": [
+      ["Room 101", "1 King"],
+      ["Room 102", "4 Twin Bunks · no private bath"],
+      ["Room 103", "1 King, 1 Twin Bunk"],
+      ["Room 104", "2 Queens"],
+      ["Room 105", "2 Queens"],
+      ["Room 106", "2 Queens, 2 Twin Bunks, Sofa Sleeper"],
+      ["Room 201", "1 King, Sofa Sleeper"],
+      ["Room 202", "1 King, Sofa Sleeper"],
+      ["Room 203", "2 Queens"],
+      ["Room 204", "2 Queens, 1 Twin"],
+      ["Room 301", "1 King, 1 Twin Bunk"],
+      ["Room 302", "1 King, 1 Twin Bunk"],
+      ["Room 303", "1 King, 1 Twin Bunk"],
+      ["Room 304", "1 King, 1 Twin Bunk"],
+      ["Lighthouse Suite", "1 King"],
+      ["Room 306", "1 King"],
+      ["Room 307", "2 Queens, 1 Twin"],
+      ["Room 308", "1 King"],
+      ["Room 309", "1 King, Sofa Sleeper"]
+    ],
+    "Beaver Creek Lodge": [
+      ["Room 1", "Queen + Bunk · adjoins Rm 2"],
+      ["Room 2", "Queen + Bunk · adjoins Rm 1"],
+      ["Room 3", "Queen + Bunk"],
+      ["Room 4", "Queen + Bunk"],
+      ["Room 5", "2 Queens"],
+      ["Room 6", "Queen + Bunk · ADA"],
+      ["Room 8", "2 Queens"],
+      ["Room 9", "2 Queens"],
+      ["Room 10", "2 Queens"],
+      ["Room 11", "2 Queens"],
+      ["Room 12", "2 Queens"]
+    ],
+    "Condos": [
+      ["Condo 106", "1 King, Queen Sofa Sleeper"],
+      ["Condo 111", "1 King, Queen Murphy, Queen Sofa Sleeper"],
+      ["Condo 120", "1 King, Queen Sofa Sleeper"],
+      ["Condo 202", "1 King, Queen Sofa Sleeper"],
+      ["Condo 207", "1 King, Queen Sofa Sleeper"],
+      ["Condo 220", "1 King, Queen Sofa Sleeper"],
+      ["Condo 310", "2 Kings, 2 Queen Sofa Sleepers · 2BR/2BA"]
+    ]
   };
+  function roomNames(property){ return (PROPERTY_ROOMS[property] || []).map(function(r){ return r[0]; }); }
+  function roomBeds(property, room){
+    const hit = (PROPERTY_ROOMS[property] || []).find(function(r){ return r[0] === room; });
+    return hit ? hit[1] : '';
+  }
   /* ============================================================== */
   const PROPERTIES = ["Sunrise Resort","Beaver Creek Lodge","Eagle's Roost","Oso Blue Yurts","Beach House","Condos"];
   const EVENT_SPACES = ["Sunrise Hall","Moose Hollow","Azure Cove","Cisco Board Room","Beaver Creek Lodge Gathering Room"];
@@ -481,8 +525,8 @@
       notes:'Two guests driving in separately — reserve 2 extra parking spots.' };
     g.lodging = { properties:['Sunrise Resort','Beaver Creek Lodge'],
       assignments:[
-        {property:'Sunrise Resort', room:'Room 1', occupants:'Dana Ruiz + spouse', notes:'Keycard set A'},
-        {property:'Sunrise Resort', room:'Room 2', occupants:'J. Patel, M. Chen', notes:''},
+        {property:'Sunrise Resort', room:'Room 101', occupants:'Dana Ruiz + spouse', notes:'Keycard set A'},
+        {property:'Sunrise Resort', room:'Room 104', occupants:'J. Patel, M. Chen', notes:''},
         {property:'Beaver Creek Lodge', room:'Room 1', occupants:'Junior staff (4)', notes:'Keycard set B'}
       ], checkIn:'4:00 PM', checkOut:'10:00 AM', notes:'Early check-in requested for 6 guests arriving 1:00 PM.', attachments:[] };
     g.catering = { dietary:'3 vegetarian, 1 gluten-free, 1 shellfish allergy (see name tags)', vendor:'In-house EBLR kitchen',
@@ -865,7 +909,7 @@
     ((draft && draft.lodging && draft.lodging.assignments) || []).forEach(function(r, j){
       if(j !== i && r.property === property && r.room) taken[r.room] = true;
     });
-    const list = (PROPERTY_ROOMS[property] || []).filter(function(rm){ return !taken[rm]; });
+    const list = roomNames(property).filter(function(rm){ return !taken[rm]; });
     if(current && list.indexOf(current) === -1) list.push(current);
     return list;
   }
@@ -879,8 +923,15 @@
         return '<td><select data-bind="'+path+'.'+i+'.property" data-lodging-pick="1"><option value="">Choose property</option>'+opts+'</select>'+legacy+'</td>';
       }
       if(c.type === 'lodgingRoom'){
+        if(row.property && !roomNames(row.property).length){
+          // No room list for this property yet — type the room instead.
+          return '<td><textarea class="autogrow oneline" rows="1" data-bind="'+path+'.'+i+'.room" placeholder="Type room / unit">'+esc(row.room||'')+'</textarea></td>';
+        }
         const rooms = lodgingRoomOptions(i, row.property, row.room);
-        const opts = rooms.map(function(o){ return '<option value="'+esc(o)+'"'+(row.room===o?' selected':'')+'>'+esc(o)+'</option>'; }).join('');
+        const opts = rooms.map(function(o){
+          const beds = roomBeds(row.property, o);
+          return '<option value="'+esc(o)+'"'+(row.room===o?' selected':'')+'>'+esc(o + (beds ? ' — ' + beds : ''))+'</option>';
+        }).join('');
         const placeholder = !row.property ? 'Pick a property first' : (rooms.length ? 'Choose room' : 'All rooms assigned');
         return '<td><select data-bind="'+path+'.'+i+'.room" data-lodging-pick="1"'+(row.property?'':' disabled')+'><option value="">'+placeholder+'</option>'+opts+'</select></td>';
       }
@@ -1051,7 +1102,7 @@
         '<div class="field" style="margin-bottom:8px;"><span>Room assignments</span></div>' +
         '<p class="muted-note" style="margin:-4px 0 8px;">Pick the property, then the room — once a room is used it drops out of the other rows\' lists.</p>' +
         renderRowsTable('lodging.assignments', [
-          {key:'property', label:'Property', type:'lodgingProperty', width:'22%'}, {key:'room', label:'Room', type:'lodgingRoom', width:'20%'},
+          {key:'property', label:'Property', type:'lodgingProperty', width:'18%'}, {key:'room', label:'Room', type:'lodgingRoom', width:'32%'},
           {key:'occupants', label:'Occupants'}, {key:'notes', label:'Notes'}
         ]) +
         '<div class="field" style="margin-top:14px;">' +
@@ -1243,7 +1294,7 @@
   // those still show, in the Room column.
   function lodgingRowsForDisplay(g){
     return ((g.lodging && g.lodging.assignments) || []).map(function(r){
-      return { property: r.property || '', room: r.room || r.unit || '', occupants: r.occupants || '', notes: r.notes || '' };
+      return { property: r.property || '', room: r.room || r.unit || '', beds: roomBeds(r.property, r.room), occupants: r.occupants || '', notes: r.notes || '' };
     });
   }
 
@@ -1302,7 +1353,7 @@
           '<div class="kv"><span class="kv-label">Check-in</span><span class="kv-value mono">'+esc(g.lodging.checkIn||'—')+'</span></div>' +
           '<div class="kv"><span class="kv-label">Check-out</span><span class="kv-value mono">'+esc(g.lodging.checkOut||'—')+'</span></div>' +
         '</div>' +
-        detailTable(lodgingRowsForDisplay(g), [{key:'property',label:'Property'},{key:'room',label:'Room'},{key:'occupants',label:'Occupants'},{key:'notes',label:'Notes'}]) +
+        detailTable(lodgingRowsForDisplay(g), [{key:'property',label:'Property'},{key:'room',label:'Room'},{key:'beds',label:'Beds'},{key:'occupants',label:'Occupants'},{key:'notes',label:'Notes'}]) +
         renderAttachmentDetailList(g.lodging.attachments, g.id, 'lodging.attachments') +
         (g.lodging.notes? '<p class="prose" style="margin-top:12px;">'+esc(g.lodging.notes)+'</p>':'') +
       '</div>' +
@@ -1492,7 +1543,7 @@
 
     y = pdfSectionHeader(doc, '3. Lodging', marginX, y);
     y = pdfKvPairs(doc, [['Properties', g.lodging.properties.join(', ') || '—'], ['Check-in', g.lodging.checkIn], ['Check-out', g.lodging.checkOut]], marginX, y, 260);
-    y = pdfTable(doc, marginX, y, [{key:'property',label:'Property',width:110},{key:'room',label:'Room',width:90},{key:'occupants',label:'Occupants',width:180},{key:'notes',label:'Notes',width:152}], lodgingRowsForDisplay(g));
+    y = pdfTable(doc, marginX, y, [{key:'property',label:'Property',width:92},{key:'room',label:'Room',width:72},{key:'beds',label:'Beds',width:118},{key:'occupants',label:'Occupants',width:140},{key:'notes',label:'Notes',width:110}], lodgingRowsForDisplay(g));
     if(g.lodging.attachments && g.lodging.attachments.length){
       y = pdfProse(doc, 'Attached in the tool (open the group\'s page to download): ' + g.lodging.attachments.map(function(a){return a.name;}).join(', '), marginX, y, pageW-marginX*2);
     }
