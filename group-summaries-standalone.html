@@ -78,6 +78,7 @@
   .btn.primary:hover{background:var(--accent-ink); border-color:var(--accent-ink);}
   .btn.ghost{background:transparent; border-color:transparent;}
   .btn.ghost:hover{background:var(--surface-2); border-color:var(--border);}
+  .btn.ghost.active{background:var(--accent-soft); color:var(--accent-ink);}
   .btn.danger-hover:hover{border-color:var(--danger); color:var(--danger);}
   .btn[disabled]{opacity:.45; cursor:not-allowed;}
   .btn:hover[disabled]{border-color:var(--border); background:var(--surface); color:var(--ink);}
@@ -270,7 +271,8 @@
   <div class="topbar-right">
     <span class="sync-pill" id="syncPill"><span class="sync-dot"></span><span id="syncLabel">Connecting&hellip;</span></span>
     <div class="tabs">
-      <button class="btn ghost" id="navList">All Groups</button>
+      <button class="btn ghost" id="navList">Current Groups</button>
+      <button class="btn ghost" id="navPast">Past Groups</button>
       <button class="btn ghost" id="navTasks">Tasks</button>
       <button class="btn ghost" id="navCustomers">Past Customers</button>
       <button class="btn primary" id="navNew">+ New Summary</button>
@@ -494,7 +496,7 @@
   function emptyGroup(){
     const now = new Date().toISOString();
     return {
-      status:'draft', categories:[], companies:[],
+      categories:[], companies:[],
       groupName:'', orgName:'', contactName:'', contactPhone:'', contactEmail:'',
       arrivalDate:'', departureDate:'', totalGuests:'', coordinator:'',
       transportation:{ mode:'', arrivalDetails:'', departureDetails:'', shuttleNeeded:false, notes:'' },
@@ -515,7 +517,7 @@
   function exampleGroup(){
     const g = emptyGroup();
     Object.assign(g, {
-      status:'confirmed', categories:['Retreat'], companies:['Sunrise Resort','Beaver Creek Lodge','Epic Recreation'],
+      categories:['Retreat'], companies:['Sunrise Resort','Beaver Creek Lodge','Epic Recreation'],
       groupName:'Meridian Analytics — Leadership Offsite', orgName:'Meridian Analytics',
       contactName:'Dana Ruiz', contactPhone:'(415) 555-0148', contactEmail:'dana.ruiz@meridiananalytics.com',
       arrivalDate:'2026-09-24', departureDate:'2026-09-27', totalGuests:42, coordinator:'Bradley',
@@ -575,7 +577,7 @@
   // Until this is filled in, the tool works fine for one person but nothing syncs between browsers.
   const API_URL = 'https://script.google.com/macros/s/AKfycbwF1r0ntuEhPccMCygw_lPz7fVZBQsHfAG6bClle2G6o44rGqcWGJssT1aAhYf3bu2zVw/exec';
 
-  const state = { view:'list', currentId:null, groups:[], mode:'connecting', search:'', filter:'all', monthFilter:'all', yearFilter:'all', categoryFilter:'all', companyFilter:'all', customerSearch:'' };
+  const state = { view:'list', listMode:'current', currentId:null, groups:[], mode:'connecting', search:'', filter:'all', monthFilter:'all', yearFilter:'all', categoryFilter:'all', companyFilter:'all', customerSearch:'' };
   let draft = null;
   let pollTimer = null;
   const tableConfigs = {};
@@ -765,6 +767,8 @@
   /* ---------------- render dispatch ---------------- */
   function render(){
     setSyncPill();
+    const navMap = { navList: state.view==='list' && state.listMode==='current', navPast: state.view==='list' && state.listMode==='past', navTasks: state.view==='tasks', navCustomers: state.view==='customers' };
+    Object.keys(navMap).forEach(function(id){ const el = document.getElementById(id); if(el) el.classList.toggle('active', !!navMap[id]); });
     const app = document.getElementById('app');
     if(state.view === 'list') app.innerHTML = renderListView();
     else if(state.view === 'edit'){ renderEditView(app); sizeAutoGrow(app); }
@@ -774,16 +778,28 @@
   }
 
   /* ---------------- list view ---------------- */
+  /* A group is "past" once its departure date has gone by (or its arrival date,
+     if no departure was entered). Groups without dates stay in Current. */
+  function todayKey(){
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function isPastGroup(g){
+    const end = g.departureDate || g.arrivalDate;
+    return !!end && end < todayKey();
+  }
+  function groupsInScope(){
+    const past = state.listMode === 'past';
+    return state.groups.filter(function(g){ return isPastGroup(g) === past; });
+  }
+
   function renderListResults(){
-    let groups = state.groups.slice();
+    let groups = groupsInScope();
     if(state.search){
       const q = state.search.toLowerCase();
       groups = groups.filter(function(g){
         return (g.groupName||'').toLowerCase().includes(q) || (g.orgName||'').toLowerCase().includes(q);
       });
-    }
-    if(state.filter !== 'all'){
-      groups = groups.filter(function(g){ return (g.status||'draft') === state.filter; });
     }
     if(state.monthFilter && state.monthFilter !== 'all'){
       groups = groups.filter(function(g){ return (monthYearKey(g.arrivalDate) || 'none') === state.monthFilter; });
@@ -800,17 +816,16 @@
         return k && k.slice(0,4) === state.yearFilter;
       });
     }
+    const newestFirst = state.listMode === 'past';
     groups.sort(function(a,b){
       if(!a.arrivalDate) return 1;
       if(!b.arrivalDate) return -1;
-      return a.arrivalDate.localeCompare(b.arrivalDate);
+      return newestFirst ? b.arrivalDate.localeCompare(a.arrivalDate) : a.arrivalDate.localeCompare(b.arrivalDate);
     });
 
     const rows = groups.map(function(g){
       const nights = nightsBetween(g.arrivalDate, g.departureDate);
       const dateStr = g.arrivalDate ? (fmtDateShort(g.arrivalDate) + (g.departureDate ? ' – ' + fmtDateShort(g.departureDate) : '') + (nights ? ' · ' + nights + ' nt' : '')) : 'Dates TBD';
-      const statusClass = g.id === 'example-demo' ? 'example' : (g.status || 'draft');
-      const statusLabel = g.id === 'example-demo' ? 'Example' : (g.status === 'confirmed' ? 'Confirmed' : 'Draft');
       const myKey = monthYearKey(g.arrivalDate);
       const myLabel = myKey ? monthYearLabel(myKey) : 'No arrival date';
       return '<div class="group-card" data-open="'+esc(g.id)+'">' +
@@ -821,19 +836,20 @@
           (g.companies || []).map(function(c){ return '<span class="pill company">'+esc(c)+'</span>'; }).join('') +
           (g.categories || []).map(function(c){ return '<span class="pill category">'+esc(c)+'</span>'; }).join('') +
           '<span class="pill monthyear">'+esc(myLabel)+'</span>' +
-          '<span class="pill '+statusClass+'">'+statusLabel+'</span>' +
+          (g.id === 'example-demo' ? '<span class="pill example">Example</span>' : '') +
         '</div>' +
         '</div>';
     }).join('');
 
-    return groups.length ? '<div class="group-list">'+rows+'</div>' :
-      '<div class="empty-state">No groups match yet. <br><br><button class="btn primary" id="emptyNewBtn">+ New Summary</button></div>';
+    if(groups.length) return '<div class="group-list">'+rows+'</div>';
+    if(state.listMode === 'past') return '<div class="empty-state">No past groups match. Groups land here automatically once their departure date has passed.</div>';
+    return '<div class="empty-state">No current or upcoming groups match. <br><br><button class="btn primary" id="emptyNewBtn">+ New Summary</button></div>';
   }
 
   function buildMonthFilterOptionsHtml(){
     const keys = new Set();
     let hasNone = false;
-    state.groups.forEach(function(g){
+    groupsInScope().forEach(function(g){
       const k = monthYearKey(g.arrivalDate);
       if(k) keys.add(k); else hasNone = true;
     });
@@ -848,7 +864,11 @@
   }
 
   function renderYearTabsHtml(){
-    const years = ['2026','2027','2028'];
+    // Years come from the groups on this tab, so past years show up under Past Groups.
+    const set = new Set();
+    groupsInScope().forEach(function(g){ const k = monthYearKey(g.arrivalDate); if(k) set.add(k.slice(0,4)); });
+    const years = Array.from(set).sort();
+    if(state.listMode === 'past') years.reverse();
     const tabs = ['all'].concat(years).map(function(y){
       const label = y === 'all' ? 'All Years' : y;
       return '<button type="button" class="year-tab'+(state.yearFilter===y?' active':'')+'" data-year-tab="'+y+'">'+label+'</button>';
@@ -874,17 +894,14 @@
 
   function renderListView(){
     return '' +
-      '<div class="list-head"><div><h1>All Groups</h1><p>Every upcoming and past retreat, in one place — click a group for its full operational summary.</p></div></div>' +
+      (state.listMode === 'past'
+        ? '<div class="list-head"><div><h1>Past Groups</h1><p>Groups that have already come and gone — they move here automatically the day after departure.</p></div></div>'
+        : '<div class="list-head"><div><h1>Current Groups</h1><p>Groups that are on-site now or coming up — click a group for its full operational summary.</p></div></div>') +
       renderYearTabsHtml() +
       renderCompanyTabsHtml() +
       renderCategoryTabsHtml() +
       '<div class="list-controls">' +
         '<input class="search-input" id="searchInput" type="text" placeholder="Search by group or organization…" value="'+esc(state.search)+'">' +
-        '<select class="filter-select" id="filterSelect">' +
-          '<option value="all"'+(state.filter==='all'?' selected':'')+'>All statuses</option>' +
-          '<option value="draft"'+(state.filter==='draft'?' selected':'')+'>Draft</option>' +
-          '<option value="confirmed"'+(state.filter==='confirmed'?' selected':'')+'>Confirmed</option>' +
-        '</select>' +
         '<select class="filter-select" id="monthFilterSelect">' +
           '<option value="all"'+(state.monthFilter==='all'?' selected':'')+'>All arrival months</option>' +
           buildMonthFilterOptionsHtml() +
@@ -1071,7 +1088,6 @@
         '<div class="field-grid">' +
           field('Group / event name','groupName','text',{wide:true,placeholder:'e.g. Meridian Analytics — Leadership Offsite'}) +
           field('Organization','orgName','text') +
-          field('Status','status','select',{options:[{value:'draft',label:'Draft'},{value:'confirmed',label:'Confirmed'}]}) +
           field('Primary contact','contactName','text') +
           field('Contact phone','contactPhone','tel') +
           field('Contact email','contactEmail','email') +
@@ -1204,6 +1220,7 @@
   async function saveCurrentDraft(btn){
     btn.disabled = true; btn.textContent = 'Saving…';
     delete draft.returningCustomer;
+    delete draft.status;
     try{
       const id = await persistGroup(draft);
       state.currentId = id;
@@ -1308,7 +1325,7 @@
       '<div class="detail-head">' +
         '<div class="detail-title">' +
           '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
-            '<span class="pill '+(g.status||'draft')+'" style="display:inline-flex;">'+(g.status==='confirmed'?'Confirmed':'Draft')+'</span>' +
+            (isPastGroup(g) ? '<span class="pill example" style="display:inline-flex;">Past group</span>' : '') +
             (g.companies || []).map(function(c){ return '<span class="pill company" style="display:inline-flex;">'+esc(c)+'</span>'; }).join('') +
             (g.categories || []).map(function(c){ return '<span class="pill category" style="display:inline-flex;">'+esc(c)+'</span>'; }).join('') +
           '</div>' +
@@ -1532,9 +1549,9 @@
     y = pdfSectionHeader(doc, '1. Group & Contact', marginX, y);
     y = pdfKvPairs(doc, [
       ['Arrival', fmtDate(g.arrivalDate)], ['Departure', fmtDate(g.departureDate)], ['Length of stay', nights? nights+' nights':'—'],
-      ['Total guests', g.totalGuests], ['Coordinator', g.coordinator], ['Status', g.status==='confirmed'?'Confirmed':'Draft'],
+      ['Total guests', g.totalGuests], ['Coordinator', g.coordinator], ['Company', (g.companies||[]).join(', ') || '—'],
       ['Contact', g.contactName], ['Phone', g.contactPhone], ['Email', g.contactEmail],
-      ['Company', (g.companies||[]).join(', ') || '—'], ['Category', (g.categories||[]).join(', ') || '—']
+      ['Category', (g.categories||[]).join(', ') || '—']
     ], marginX, y, 170);
 
     y = pdfSectionHeader(doc, '2. Transportation & Arrival', marginX, y);
@@ -1855,6 +1872,7 @@
       // Clicking the card itself shows that customer's stays on the All Groups list.
       const c = buildCustomerDirectory().find(function(x){ return x.key === custOpen.dataset.customerOpen; });
       state.view = 'list'; state.search = c ? (c.orgName || c.contactName || '') : '';
+      state.listMode = (c && c.stays.some(function(x){ return !isPastGroup(x); })) ? 'current' : 'past';
       state.filter = 'all'; state.monthFilter = 'all'; state.yearFilter = 'all'; state.categoryFilter = 'all'; state.companyFilter = 'all';
       render(); return;
     }
@@ -1944,11 +1962,11 @@
     if(e.target.id === 'saveGroupBtn'){ saveCurrentDraft(e.target); return; }
     if(e.target.id === 'emptyNewBtn'){ startNew(); return; }
     if(card){ e.preventDefault(); state.currentId = card.dataset.open; state.view = 'detail'; render(); return; }
-    if(e.target.id === 'backToListBtn'){ state.view = 'list'; render(); return; }
+    if(e.target.id === 'backToListBtn'){ const bg = findGroup(state.currentId); if(bg) state.listMode = isPastGroup(bg) ? 'past' : 'current'; state.view = 'list'; render(); return; }
     if(e.target.id === 'editGroupBtn'){ draft = JSON.parse(JSON.stringify(findGroup(state.currentId))); state.view = 'edit'; render(); return; }
     if(e.target.id === 'duplicateGroupBtn'){
       const copy = JSON.parse(JSON.stringify(findGroup(state.currentId)));
-      delete copy.id; copy.status = 'draft'; copy.groupName = copy.groupName + ' (copy)';
+      delete copy.id; delete copy.status; copy.groupName = copy.groupName + ' (copy)';
       draft = copy; state.view = 'edit'; render(); return;
     }
     if(e.target.id === 'exportPdfBtn' && !e.target.disabled){ exportPdf(findGroup(state.currentId), e.target); return; }
@@ -2055,7 +2073,12 @@
   });
   appEl.addEventListener('change', handleAppInputOrChange);
   window.addEventListener('resize', function(){ if(state.view === 'edit') sizeAutoGrow(appEl); });
-  document.getElementById('navList').addEventListener('click', function(){ state.view='list'; draft=null; render(); });
+  function showList(mode){
+    if(state.listMode !== mode){ state.yearFilter = 'all'; state.monthFilter = 'all'; }
+    state.listMode = mode; state.view = 'list'; draft = null; render();
+  }
+  document.getElementById('navList').addEventListener('click', function(){ showList('current'); });
+  document.getElementById('navPast').addEventListener('click', function(){ showList('past'); });
   document.getElementById('navTasks').addEventListener('click', function(){ state.view='tasks'; draft=null; render(); });
   document.getElementById('navCustomers').addEventListener('click', function(){ state.view='customers'; draft=null; render(); });
   document.getElementById('navNew').addEventListener('click', startNew);
