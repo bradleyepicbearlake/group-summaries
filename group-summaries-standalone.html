@@ -127,6 +127,23 @@
   .pill.category{background:var(--surface-2); color:var(--ink-soft); border:1px solid var(--border);}
   .category-tabs{display:flex; gap:6px; margin:-4px 0 14px; flex-wrap:wrap; align-items:center;}
   .category-tabs .ct-label{font-size:11.5px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-right:4px;}
+  .pill.company{background:var(--warm-soft); color:var(--warm);}
+  .company-bar{
+    display:flex; align-items:center; gap:10px 20px; flex-wrap:wrap;
+    background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--warm);
+    border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 18px; margin-bottom:16px;
+  }
+  .company-bar .cb-label{font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;}
+  .company-bar label{display:flex; align-items:center; gap:7px; font-size:14px; font-weight:600;}
+  .customer-bar{
+    background:var(--accent-soft); border:1px solid var(--border); border-radius:var(--radius);
+    padding:14px 18px; margin-bottom:16px; display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;
+  }
+  .customer-bar .field{flex:1; min-width:240px;}
+  .customer-bar input{padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm);}
+  .customer-bar .cb-hint{font-size:12.5px; color:var(--accent-ink); flex-basis:100%; margin:0;}
+  .legacy-note{font-size:11.5px; color:var(--muted); font-style:italic; margin-top:3px;}
+  .customer-card{grid-template-columns:1fr auto auto;}
   .empty-state{
     text-align:center; padding:60px 20px; color:var(--muted); border:1px dashed var(--border); border-radius:var(--radius);
   }
@@ -229,6 +246,10 @@
     .section-card{box-shadow:none; break-inside:avoid;}
   }
   @media (max-width:640px){
+    .topbar{flex-wrap:wrap; padding:12px 16px; gap:10px;}
+    .topbar-right{flex-wrap:wrap; gap:8px; width:100%; justify-content:space-between;}
+    .tabs{flex-wrap:wrap; gap:4px;}
+    .tabs .btn{padding:7px 10px; font-size:13px;}
     .group-card{grid-template-columns:1fr; align-items:flex-start; gap:8px;}
     .gc-guests{text-align:left;}
   }
@@ -251,6 +272,7 @@
     <div class="tabs">
       <button class="btn ghost" id="navList">All Groups</button>
       <button class="btn ghost" id="navTasks">Tasks</button>
+      <button class="btn ghost" id="navCustomers">Past Customers</button>
       <button class="btn primary" id="navNew">+ New Summary</button>
     </div>
   </div>
@@ -317,6 +339,26 @@
   }
 
   const CATEGORIES = ["Retreat","Wedding","Reunion"];
+
+  // Which company (or companies) a group belongs to. Shown as checkboxes at the top of every
+  // summary and as a filter row on the All Groups list.
+  const COMPANIES = ["Beaver Creek Lodge","Sunrise Resort","Epic Recreation"];
+
+  /* ================= EDIT YOUR ROOM LISTS HERE =================
+     Each property's rooms/units, in the order you want them to appear in the
+     Room Assignments dropdowns. Change, add or remove names freely — just keep
+     each name in "quotes" with a comma between them. The property names on the
+     left must match the PROPERTIES list just below exactly.
+     (These are placeholders — replace them with your real room names.) */
+  const PROPERTY_ROOMS = {
+    "Sunrise Resort":     ["Room 1","Room 2","Room 3","Room 4","Room 5","Room 6","Room 7","Room 8","Room 9","Room 10","Room 11","Room 12"],
+    "Beaver Creek Lodge": ["Room 1","Room 2","Room 3","Room 4","Room 5","Room 6","Room 7","Room 8"],
+    "Eagle's Roost":      ["Room 1","Room 2","Room 3","Room 4","Room 5"],
+    "Oso Blue Yurts":     ["Yurt 1","Yurt 2","Yurt 3","Yurt 4","Yurt 5","Yurt 6"],
+    "Beach House":        ["Room 1","Room 2","Room 3","Room 4"],
+    "Condos":             ["Condo 1","Condo 2","Condo 3","Condo 4"]
+  };
+  /* ============================================================== */
   const PROPERTIES = ["Sunrise Resort","Beaver Creek Lodge","Eagle's Roost","Oso Blue Yurts","Beach House","Condos"];
   const EVENT_SPACES = ["Sunrise Hall","Moose Hollow","Azure Cove","Cisco Board Room","Beaver Creek Lodge Gathering Room"];
   const SESSION_TYPES = ["Partial Day","Full Day"];
@@ -408,7 +450,7 @@
   function emptyGroup(){
     const now = new Date().toISOString();
     return {
-      status:'draft', categories:[],
+      status:'draft', categories:[], companies:[],
       groupName:'', orgName:'', contactName:'', contactPhone:'', contactEmail:'',
       arrivalDate:'', departureDate:'', totalGuests:'', coordinator:'',
       transportation:{ mode:'', arrivalDetails:'', departureDetails:'', shuttleNeeded:false, notes:'' },
@@ -429,7 +471,7 @@
   function exampleGroup(){
     const g = emptyGroup();
     Object.assign(g, {
-      status:'confirmed', categories:['Retreat'],
+      status:'confirmed', categories:['Retreat'], companies:['Sunrise Resort','Beaver Creek Lodge','Epic Recreation'],
       groupName:'Meridian Analytics — Leadership Offsite', orgName:'Meridian Analytics',
       contactName:'Dana Ruiz', contactPhone:'(415) 555-0148', contactEmail:'dana.ruiz@meridiananalytics.com',
       arrivalDate:'2026-09-24', departureDate:'2026-09-27', totalGuests:42, coordinator:'Bradley',
@@ -439,9 +481,10 @@
       notes:'Two guests driving in separately — reserve 2 extra parking spots.' };
     g.lodging = { properties:['Sunrise Resort','Beaver Creek Lodge'],
       assignments:[
-        {unit:'Sunrise Main Lodge', occupants:'28 guests (exec team + spouses)', notes:'Keycard set A'},
-        {unit:'Beaver Creek Lodge', occupants:'14 guests (junior staff)', notes:'Keycard set B'}
-      ], checkIn:'4:00 PM', checkOut:'10:00 AM', notes:'Early check-in requested for 6 guests arriving 1:00 PM.' };
+        {property:'Sunrise Resort', room:'Room 1', occupants:'Dana Ruiz + spouse', notes:'Keycard set A'},
+        {property:'Sunrise Resort', room:'Room 2', occupants:'J. Patel, M. Chen', notes:''},
+        {property:'Beaver Creek Lodge', room:'Room 1', occupants:'Junior staff (4)', notes:'Keycard set B'}
+      ], checkIn:'4:00 PM', checkOut:'10:00 AM', notes:'Early check-in requested for 6 guests arriving 1:00 PM.', attachments:[] };
     g.catering = { dietary:'3 vegetarian, 1 gluten-free, 1 shellfish allergy (see name tags)', vendor:'In-house EBLR kitchen',
       meals:[
         {day:'Thu 9/24', meal:'Dinner', time:'6:30 PM', location:'Sunrise Hall', headcount:42, notes:'Welcome dinner, plated'},
@@ -488,7 +531,7 @@
   // Until this is filled in, the tool works fine for one person but nothing syncs between browsers.
   const API_URL = 'https://script.google.com/macros/s/AKfycbwF1r0ntuEhPccMCygw_lPz7fVZBQsHfAG6bClle2G6o44rGqcWGJssT1aAhYf3bu2zVw/exec';
 
-  const state = { view:'list', currentId:null, groups:[], mode:'connecting', search:'', filter:'all', monthFilter:'all', yearFilter:'all', categoryFilter:'all' };
+  const state = { view:'list', currentId:null, groups:[], mode:'connecting', search:'', filter:'all', monthFilter:'all', yearFilter:'all', categoryFilter:'all', companyFilter:'all', customerSearch:'' };
   let draft = null;
   let pollTimer = null;
   const tableConfigs = {};
@@ -683,6 +726,7 @@
     else if(state.view === 'edit'){ renderEditView(app); sizeAutoGrow(app); }
     else if(state.view === 'detail') app.innerHTML = renderDetailView();
     else if(state.view === 'tasks') app.innerHTML = renderTasksView();
+    else if(state.view === 'customers') app.innerHTML = renderCustomersView();
   }
 
   /* ---------------- list view ---------------- */
@@ -702,6 +746,9 @@
     }
     if(state.categoryFilter && state.categoryFilter !== 'all'){
       groups = groups.filter(function(g){ return (g.categories || []).indexOf(state.categoryFilter) > -1; });
+    }
+    if(state.companyFilter && state.companyFilter !== 'all'){
+      groups = groups.filter(function(g){ return (g.companies || []).indexOf(state.companyFilter) > -1; });
     }
     if(state.yearFilter && state.yearFilter !== 'all'){
       groups = groups.filter(function(g){
@@ -727,6 +774,7 @@
         '<div class="gc-dates mono">'+esc(dateStr)+'</div>' +
         '<div class="gc-guests mono">'+(g.totalGuests? esc(g.totalGuests)+' guests':'—')+'</div>' +
         '<div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">' +
+          (g.companies || []).map(function(c){ return '<span class="pill company">'+esc(c)+'</span>'; }).join('') +
           (g.categories || []).map(function(c){ return '<span class="pill category">'+esc(c)+'</span>'; }).join('') +
           '<span class="pill monthyear">'+esc(myLabel)+'</span>' +
           '<span class="pill '+statusClass+'">'+statusLabel+'</span>' +
@@ -772,10 +820,19 @@
     return '<div class="category-tabs" id="categoryTabsRow"><span class="ct-label">Category</span>'+tabs+'</div>';
   }
 
+  function renderCompanyTabsHtml(){
+    const tabs = ['all'].concat(COMPANIES).map(function(c){
+      const label = c === 'all' ? 'All Companies' : c;
+      return '<button type="button" class="year-tab'+(state.companyFilter===c?' active':'')+'" data-company-tab="'+esc(c)+'">'+esc(label)+'</button>';
+    }).join('');
+    return '<div class="category-tabs" id="companyTabsRow"><span class="ct-label">Company</span>'+tabs+'</div>';
+  }
+
   function renderListView(){
     return '' +
       '<div class="list-head"><div><h1>All Groups</h1><p>Every upcoming and past retreat, in one place — click a group for its full operational summary.</p></div></div>' +
       renderYearTabsHtml() +
+      renderCompanyTabsHtml() +
       renderCategoryTabsHtml() +
       '<div class="list-controls">' +
         '<input class="search-input" id="searchInput" type="text" placeholder="Search by group or organization…" value="'+esc(state.search)+'">' +
@@ -793,9 +850,40 @@
   }
 
   /* ---------------- edit view ---------------- */
+  // Properties offered in a room row: the ones checked under "Properties in use"
+  // (or all of them if none are checked yet), plus whatever the row already has.
+  function lodgingPropertyOptions(current){
+    const inUse = (draft && draft.lodging && draft.lodging.properties) || [];
+    const list = (inUse.length ? inUse : PROPERTIES).slice();
+    if(current && list.indexOf(current) === -1) list.push(current);
+    return list;
+  }
+  // Rooms offered in row i: that property's rooms, minus any room another row already took.
+  function lodgingRoomOptions(i, property, current){
+    if(!property) return [];
+    const taken = {};
+    ((draft && draft.lodging && draft.lodging.assignments) || []).forEach(function(r, j){
+      if(j !== i && r.property === property && r.room) taken[r.room] = true;
+    });
+    const list = (PROPERTY_ROOMS[property] || []).filter(function(rm){ return !taken[rm]; });
+    if(current && list.indexOf(current) === -1) list.push(current);
+    return list;
+  }
+
   function tableRowHtml(path, i, row, columns){
     const cells = columns.map(function(c){
       const val = esc(row[c.key] || '');
+      if(c.type === 'lodgingProperty'){
+        const opts = lodgingPropertyOptions(row.property).map(function(o){ return '<option value="'+esc(o)+'"'+(row.property===o?' selected':'')+'>'+esc(o)+'</option>'; }).join('');
+        const legacy = (!row.property && !row.room && row.unit) ? '<div class="legacy-note">Previously typed: '+esc(row.unit)+'</div>' : '';
+        return '<td><select data-bind="'+path+'.'+i+'.property" data-lodging-pick="1"><option value="">Choose property</option>'+opts+'</select>'+legacy+'</td>';
+      }
+      if(c.type === 'lodgingRoom'){
+        const rooms = lodgingRoomOptions(i, row.property, row.room);
+        const opts = rooms.map(function(o){ return '<option value="'+esc(o)+'"'+(row.room===o?' selected':'')+'>'+esc(o)+'</option>'; }).join('');
+        const placeholder = !row.property ? 'Pick a property first' : (rooms.length ? 'Choose room' : 'All rooms assigned');
+        return '<td><select data-bind="'+path+'.'+i+'.room" data-lodging-pick="1"'+(row.property?'':' disabled')+'><option value="">'+placeholder+'</option>'+opts+'</select></td>';
+      }
       if(c.type === 'select'){
         const opts = c.options.map(function(o){ return '<option value="'+esc(o)+'"'+(row[c.key]===o?' selected':'')+'>'+esc(o)+'</option>'; }).join('');
         return '<td><select data-bind="'+path+'.'+i+'.'+c.key+'"><option value=""></option>'+opts+'</select></td>';
@@ -818,6 +906,13 @@
   }
 
   function defaultRowFor(path){
+    if(path === 'lodging.assignments'){
+      const inUse = draft.lodging.properties || [];
+      // Carry the last row's property forward so filling a whole building is quick.
+      const rows = draft.lodging.assignments || [];
+      const last = rows.length ? rows[rows.length-1].property : '';
+      return { property: last || (inUse.length === 1 ? inUse[0] : ''), room:'', occupants:'', notes:'' };
+    }
     if(path === 'communicationLog'){
       return { date: new Date().toISOString().slice(0,10), contactName: draft.contactName||'', staffName: draft.coordinator||'', notes:'' };
     }
@@ -912,6 +1007,12 @@
       '<div class="list-head"><div><h1>'+(isNew?'New Group Summary':'Edit — '+esc(draft.groupName||'Untitled'))+'</h1>' +
       '<p>Fill in what applies — leave the rest blank. Everyone on the team will see whatever you save here.</p></div></div>' +
 
+      '<div class="company-bar"><span class="cb-label">Company</span>' +
+        COMPANIES.map(function(c){ return '<label><input type="checkbox" data-toggle-array="companies" data-value="'+esc(c)+'" '+((draft.companies||[]).indexOf(c)>-1?'checked':'')+'> '+esc(c)+'</label>'; }).join('') +
+      '</div>' +
+
+      (isNew ? renderCustomerPickerHtml() : '') +
+
       '<div class="section-card"><div class="section-title"><span class="section-index">1</span> Group &amp; Contact</div>' +
         '<div class="field" style="margin-bottom:14px;"><span>Category</span><div class="check-row">' +
           CATEGORIES.map(function(c){ return '<label><input type="checkbox" data-toggle-array="categories" data-value="'+esc(c)+'" '+((draft.categories||[]).indexOf(c)>-1?'checked':'')+'> '+esc(c)+'</label>'; }).join('') +
@@ -947,9 +1048,11 @@
           field('Check-in time','lodging.checkIn','text') +
           field('Check-out time','lodging.checkOut','text') +
         '</div>' +
-        '<div class="field" style="margin-bottom:8px;"><span>Room / unit assignments</span></div>' +
+        '<div class="field" style="margin-bottom:8px;"><span>Room assignments</span></div>' +
+        '<p class="muted-note" style="margin:-4px 0 8px;">Pick the property, then the room — once a room is used it drops out of the other rows\' lists.</p>' +
         renderRowsTable('lodging.assignments', [
-          {key:'unit', label:'Property / unit'}, {key:'occupants', label:'Occupants'}, {key:'notes', label:'Notes'}
+          {key:'property', label:'Property', type:'lodgingProperty', width:'22%'}, {key:'room', label:'Room', type:'lodgingRoom', width:'20%'},
+          {key:'occupants', label:'Occupants'}, {key:'notes', label:'Notes'}
         ]) +
         '<div class="field" style="margin-top:14px;">' +
           '<span>Attachments</span>' +
@@ -1049,6 +1152,7 @@
 
   async function saveCurrentDraft(btn){
     btn.disabled = true; btn.textContent = 'Saving…';
+    delete draft.returningCustomer;
     try{
       const id = await persistGroup(draft);
       state.currentId = id;
@@ -1135,6 +1239,14 @@
     }).join('') + '</div>';
   }
 
+  // Room rows for the detail page / PDF. Older summaries typed the unit by hand —
+  // those still show, in the Room column.
+  function lodgingRowsForDisplay(g){
+    return ((g.lodging && g.lodging.assignments) || []).map(function(r){
+      return { property: r.property || '', room: r.room || r.unit || '', occupants: r.occupants || '', notes: r.notes || '' };
+    });
+  }
+
   function renderDetailView(){
     const g = findGroup(state.currentId);
     if(!g) return '<div class="empty-state">Group not found. <br><br><button class="btn primary" id="backToListBtn">Back to all groups</button></div>';
@@ -1146,6 +1258,7 @@
         '<div class="detail-title">' +
           '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
             '<span class="pill '+(g.status||'draft')+'" style="display:inline-flex;">'+(g.status==='confirmed'?'Confirmed':'Draft')+'</span>' +
+            (g.companies || []).map(function(c){ return '<span class="pill company" style="display:inline-flex;">'+esc(c)+'</span>'; }).join('') +
             (g.categories || []).map(function(c){ return '<span class="pill category" style="display:inline-flex;">'+esc(c)+'</span>'; }).join('') +
           '</div>' +
           '<h1>'+esc(g.groupName||'Untitled group')+'</h1>' +
@@ -1161,6 +1274,7 @@
 
       '<div class="section-card"><div class="section-title"><span class="section-index">1</span> Group &amp; Contact</div>' +
         '<div class="kv-grid">' +
+          '<div class="kv"><span class="kv-label">Company</span><span class="kv-value">'+esc((g.companies||[]).join(', ') || '—')+'</span></div>' +
           '<div class="kv"><span class="kv-label">Category</span><span class="kv-value">'+esc((g.categories||[]).join(', ') || '—')+'</span></div>' +
           '<div class="kv"><span class="kv-label">Arrival</span><span class="kv-value mono">'+esc(fmtDate(g.arrivalDate))+'</span></div>' +
           '<div class="kv"><span class="kv-label">Departure</span><span class="kv-value mono">'+esc(fmtDate(g.departureDate))+'</span></div>' +
@@ -1188,7 +1302,7 @@
           '<div class="kv"><span class="kv-label">Check-in</span><span class="kv-value mono">'+esc(g.lodging.checkIn||'—')+'</span></div>' +
           '<div class="kv"><span class="kv-label">Check-out</span><span class="kv-value mono">'+esc(g.lodging.checkOut||'—')+'</span></div>' +
         '</div>' +
-        detailTable(g.lodging.assignments, [{key:'unit',label:'Property / unit'},{key:'occupants',label:'Occupants'},{key:'notes',label:'Notes'}]) +
+        detailTable(lodgingRowsForDisplay(g), [{key:'property',label:'Property'},{key:'room',label:'Room'},{key:'occupants',label:'Occupants'},{key:'notes',label:'Notes'}]) +
         renderAttachmentDetailList(g.lodging.attachments, g.id, 'lodging.attachments') +
         (g.lodging.notes? '<p class="prose" style="margin-top:12px;">'+esc(g.lodging.notes)+'</p>':'') +
       '</div>' +
@@ -1359,6 +1473,7 @@
     doc.text(g.groupName || 'Untitled group', marginX, y);
     y += 16;
     if(g.orgName){ doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(90,105,100); doc.text(g.orgName, marginX, y); y += 14; }
+    if(g.companies && g.companies.length){ doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(201,124,61); doc.text(g.companies.join('  ·  ').toUpperCase(), marginX, y); y += 12; }
     doc.setDrawColor(210,225,220); doc.setLineWidth(1); doc.line(marginX, y+2, pageW-marginX, y+2);
     y += 22;
 
@@ -1368,7 +1483,7 @@
       ['Arrival', fmtDate(g.arrivalDate)], ['Departure', fmtDate(g.departureDate)], ['Length of stay', nights? nights+' nights':'—'],
       ['Total guests', g.totalGuests], ['Coordinator', g.coordinator], ['Status', g.status==='confirmed'?'Confirmed':'Draft'],
       ['Contact', g.contactName], ['Phone', g.contactPhone], ['Email', g.contactEmail],
-      ['Category', (g.categories||[]).join(', ') || '—']
+      ['Company', (g.companies||[]).join(', ') || '—'], ['Category', (g.categories||[]).join(', ') || '—']
     ], marginX, y, 170);
 
     y = pdfSectionHeader(doc, '2. Transportation & Arrival', marginX, y);
@@ -1377,7 +1492,7 @@
 
     y = pdfSectionHeader(doc, '3. Lodging', marginX, y);
     y = pdfKvPairs(doc, [['Properties', g.lodging.properties.join(', ') || '—'], ['Check-in', g.lodging.checkIn], ['Check-out', g.lodging.checkOut]], marginX, y, 260);
-    y = pdfTable(doc, marginX, y, [{key:'unit',label:'Unit',width:150},{key:'occupants',label:'Occupants',width:210},{key:'notes',label:'Notes',width:172}], g.lodging.assignments);
+    y = pdfTable(doc, marginX, y, [{key:'property',label:'Property',width:110},{key:'room',label:'Room',width:90},{key:'occupants',label:'Occupants',width:180},{key:'notes',label:'Notes',width:152}], lodgingRowsForDisplay(g));
     if(g.lodging.attachments && g.lodging.attachments.length){
       y = pdfProse(doc, 'Attached in the tool (open the group\'s page to download): ' + g.lodging.attachments.map(function(a){return a.name;}).join(', '), marginX, y, pageW-marginX*2);
     }
@@ -1515,6 +1630,91 @@
     if(list) list.innerHTML = renderAttachmentEditList(path);
   }
 
+  /* ---------------- past customers ----------------
+     Built automatically from every saved summary — no separate list to keep up.
+     Groups are matched by organization name (or contact email / name if there's
+     no organization). The contact details come from the most recent stay. */
+  function customerKey(g){
+    const org = (g.orgName||'').trim().toLowerCase();
+    if(org) return 'org:' + org;
+    const email = (g.contactEmail||'').trim().toLowerCase();
+    if(email) return 'email:' + email;
+    const name = (g.contactName||'').trim().toLowerCase();
+    return name ? 'name:' + name : '';
+  }
+  function buildCustomerDirectory(){
+    const map = {};
+    state.groups.forEach(function(g){
+      if(g.id === 'example-demo') return;
+      const key = customerKey(g);
+      if(!key) return;
+      const c = map[key] || (map[key] = { key:key, stays:[], orgName:'', contactName:'', contactPhone:'', contactEmail:'', companies:[], categories:[] });
+      c.stays.push(g);
+    });
+    return Object.keys(map).map(function(k){
+      const c = map[k];
+      c.stays.sort(function(a,b){ return String(b.arrivalDate||b.updatedAt||'').localeCompare(String(a.arrivalDate||a.updatedAt||'')); });
+      // Newest non-empty value wins for each contact field.
+      ['orgName','contactName','contactPhone','contactEmail'].forEach(function(f){
+        const hit = c.stays.find(function(s){ return (s[f]||'').toString().trim(); });
+        c[f] = hit ? hit[f] : '';
+      });
+      c.companies = (c.stays[0].companies || []).slice();
+      c.categories = (c.stays[0].categories || []).slice();
+      c.label = (c.orgName || c.contactName || c.contactEmail) + (c.orgName && c.contactName ? ' — ' + c.contactName : '');
+      return c;
+    }).sort(function(a,b){ return a.label.localeCompare(b.label); });
+  }
+  function applyCustomerToDraft(c){
+    draft.orgName = c.orgName;
+    draft.contactName = c.contactName;
+    draft.contactPhone = c.contactPhone;
+    draft.contactEmail = c.contactEmail;
+    if(!(draft.companies||[]).length) draft.companies = c.companies.slice();
+    if(!(draft.categories||[]).length) draft.categories = c.categories.slice();
+    if(!draft.groupName && c.orgName) draft.groupName = c.orgName + ' — ';
+    draft.returningCustomer = true;
+  }
+  function renderCustomerPickerHtml(){
+    const customers = buildCustomerDirectory();
+    if(!customers.length) return '';
+    const opts = customers.map(function(c){ return '<option value="'+esc(c.label)+'">'; }).join('');
+    return '<div class="customer-bar">' +
+      '<datalist id="customerList">'+opts+'</datalist>' +
+      '<label class="field"><span>Returning customer?</span>' +
+        '<input id="customerPicker" type="text" list="customerList" placeholder="Start typing an organization or contact name…" autocomplete="off"></label>' +
+      (draft.returningCustomer ? '<p class="cb-hint">✓ Contact info filled in from their last stay — double-check it\'s still current.</p>'
+        : '<p class="cb-hint">Pick a past group to fill in the organization and contact info automatically.</p>') +
+    '</div>';
+  }
+  function renderCustomersView(){
+    const all = buildCustomerDirectory();
+    const q = (state.customerSearch||'').toLowerCase();
+    const list = q ? all.filter(function(c){
+      return [c.orgName,c.contactName,c.contactEmail,c.contactPhone].join(' ').toLowerCase().indexOf(q) > -1;
+    }) : all;
+    const rows = list.map(function(c){
+      const last = c.stays[0];
+      const lastStr = last.arrivalDate ? 'Last stay ' + fmtDateShort(last.arrivalDate) + ' ' + last.arrivalDate.slice(0,4) : 'No dates yet';
+      return '<div class="group-card customer-card" data-customer-open="'+esc(c.key)+'">' +
+        '<div class="gc-main"><div class="gc-name">'+esc(c.orgName || c.contactName || 'Unnamed customer')+'</div>' +
+          '<div class="gc-org">'+esc([c.contactName, c.contactPhone, c.contactEmail].filter(Boolean).join('  ·  '))+'</div></div>' +
+        '<div class="gc-dates mono">'+esc(c.stays.length + (c.stays.length===1?' stay':' stays'))+' · '+esc(lastStr)+'</div>' +
+        '<button type="button" class="btn primary" data-customer-new="'+esc(c.key)+'">+ New summary</button>' +
+      '</div>';
+    }).join('');
+    return '<div class="list-head"><div><h1>Past Customers</h1><p>Everyone who\'s had a group summary, built automatically from saved summaries. Start a new one and their contact info fills itself in.</p></div></div>' +
+      '<div class="list-controls"><input class="search-input" id="customerSearchInput" type="text" placeholder="Search by organization, contact, email, or phone…" value="'+esc(state.customerSearch)+'"></div>' +
+      '<div id="customerResults">' + (list.length ? '<div class="group-list">'+rows+'</div>' : '<div class="empty-state">'+(all.length?'No customers match that search.':'No customers yet — they\'ll appear here as soon as you save your first real group summary.')+'</div>') + '</div>';
+  }
+  function startNewForCustomer(key){
+    const c = buildCustomerDirectory().find(function(x){ return x.key === key; });
+    draft = emptyGroup();
+    if(c) applyCustomerToDraft(c);
+    state.view = 'edit';
+    render();
+  }
+
   /* ---------------- tasks overview ---------------- */
   function renderTasksView(){
     const flat = [];
@@ -1588,6 +1788,25 @@
     const removeAtt = e.target.closest('[data-remove-attachment]');
     const dlAtt = e.target.closest('[data-download-attachment]');
     const yearTab = e.target.closest('[data-year-tab]');
+
+    const companyTab = e.target.closest('[data-company-tab]');
+    if(state.view === 'list' && companyTab){
+      state.companyFilter = companyTab.dataset.companyTab;
+      const row = document.getElementById('companyTabsRow');
+      if(row) row.outerHTML = renderCompanyTabsHtml();
+      document.getElementById('resultsContainer').innerHTML = renderListResults();
+      return;
+    }
+    const custNew = e.target.closest('[data-customer-new]');
+    if(state.view === 'customers' && custNew){ startNewForCustomer(custNew.dataset.customerNew); return; }
+    const custOpen = e.target.closest('[data-customer-open]');
+    if(state.view === 'customers' && custOpen){
+      // Clicking the card itself shows that customer's stays on the All Groups list.
+      const c = buildCustomerDirectory().find(function(x){ return x.key === custOpen.dataset.customerOpen; });
+      state.view = 'list'; state.search = c ? (c.orgName || c.contactName || '') : '';
+      state.filter = 'all'; state.monthFilter = 'all'; state.yearFilter = 'all'; state.categoryFilter = 'all'; state.companyFilter = 'all';
+      render(); return;
+    }
 
     const categoryTab = e.target.closest('[data-category-tab]');
     if(state.view === 'list' && categoryTab){
@@ -1708,6 +1927,19 @@
       document.getElementById('resultsContainer').innerHTML = renderListResults();
       return;
     }
+    if(t.id === 'customerSearchInput'){
+      state.customerSearch = t.value;
+      const pos = t.selectionStart;
+      document.getElementById('app').innerHTML = renderCustomersView();
+      const again = document.getElementById('customerSearchInput');
+      if(again){ again.focus(); try{ again.setSelectionRange(pos,pos); }catch(err){} }
+      return;
+    }
+    if(t.id === 'customerPicker' && state.view === 'edit' && draft){
+      const c = buildCustomerDirectory().find(function(x){ return x.label === t.value; });
+      if(c){ applyCustomerToDraft(c); render(); }
+      return;
+    }
     if(t.id === 'monthFilterSelect'){
       state.monthFilter = t.value;
       document.getElementById('resultsContainer').innerHTML = renderListResults();
@@ -1743,6 +1975,11 @@
       if(t.type === 'checkbox') val = t.checked;
       else if(t.type === 'number') val = t.value === '' ? '' : Number(t.value);
       setPath(draft, t.dataset.bind, val);
+      if(t.dataset.lodgingPick && e.type === 'change'){
+        if(/\.property$/.test(t.dataset.bind)) setPath(draft, t.dataset.bind.replace(/\.property$/, '.room'), '');
+        refreshTable('lodging.assignments');
+        return;
+      }
       if(/\.orientation$/.test(t.dataset.bind)){
         const subcard = t.closest('.subcard');
         const notesField = subcard && subcard.querySelector('[data-orientation-notes]');
@@ -1755,6 +1992,7 @@
       if(t.checked && idx === -1) arr.push(v);
       if(!t.checked && idx !== -1) arr.splice(idx,1);
       setPath(draft, t.dataset.toggleArray, arr);
+      if(t.dataset.toggleArray === 'lodging.properties' && e.type === 'change') refreshTable('lodging.assignments');
     }
   }
 
@@ -1768,6 +2006,7 @@
   window.addEventListener('resize', function(){ if(state.view === 'edit') sizeAutoGrow(appEl); });
   document.getElementById('navList').addEventListener('click', function(){ state.view='list'; draft=null; render(); });
   document.getElementById('navTasks').addEventListener('click', function(){ state.view='tasks'; draft=null; render(); });
+  document.getElementById('navCustomers').addEventListener('click', function(){ state.view='customers'; draft=null; render(); });
   document.getElementById('navNew').addEventListener('click', startNew);
 
   initStorage();
