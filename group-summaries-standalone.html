@@ -411,7 +411,7 @@
   const TABLE_TYPES = ["Lifetime 8 Ft","Banquet 8 Ft","Rounds"];
   const CHAIR_TYPES = ["Blue","White"];
   const AV_OPTIONS = ["Podium","TV","Projector","Sonos","Microphones","Round the Clock Assistance"];
-  const STAFF_OPTIONS = ["Bradley","Kristen","Sam","Kylie","Tricia","Mark","Jack","Carter","Morgan"];
+  const STAFF_OPTIONS = ["Bradley","Kristen","Sam","Kylie","Tricia","Mark","Jack","Carter","Morgan","Aly","Jordan"];
   const ORIENTATIONS = ["Banquet","U-Shape","Conference","Stadium","Custom"];
   const MAX_ATTACHMENT_BYTES = 10*1024*1024;
 
@@ -459,7 +459,7 @@
   }
 
   function newEventSpaceSession(){
-    return { day:'', dayEnd:'', time:'', timeEnd:'', session:'', orientation:'', orientationNotes:'', spaces:[], tableTypes:[], numTables:'', chairTypes:[], numChairs:'', avNeeds:[], staff:[], notes:'' };
+    return { day:'', dayEnd:'', time:'', timeEnd:'', session:'', orientation:'', orientationNotes:'', spaces:[], tableTypes:[], numTables:'', chairTypes:[], numChairs:'', avNeeds:[], staff:[], staffTeardown:[], notes:'' };
   }
 
   function formatDateRange(start, end){
@@ -544,10 +544,10 @@
       ] };
     g.eventSpace = { notes:'', schedule:[
         { day:'2026-09-25', time:'14:00', timeEnd:'17:00', session:'Partial Day', orientation:'Custom', orientationNotes:'Theater-style rows facing the stage', spaces:['Sunrise Hall'], tableTypes:['Banquet 8 Ft'], numTables:6,
-          chairTypes:['Blue'], numChairs:48, avNeeds:['Podium','Projector','Microphones'], staff:['Bradley','Kristen'],
+          chairTypes:['Blue'], numChairs:48, avNeeds:['Podium','Projector','Microphones'], staff:['Bradley','Kristen'], staffTeardown:['Jack','Carter'],
           notes:'Leadership keynote + strategy session — theater seating for 42.' },
         { day:'2026-09-26', dayEnd:'2026-09-27', time:'09:00', timeEnd:'16:00', session:'Full Day', orientation:'Banquet', orientationNotes:'', spaces:['Moose Hollow'], tableTypes:['Rounds'], numTables:5,
-          chairTypes:['White'], numChairs:42, avNeeds:['TV','Sonos'], staff:['Sam','Kylie'],
+          chairTypes:['White'], numChairs:42, avNeeds:['TV','Sonos'], staff:['Sam','Kylie'], staffTeardown:['Aly','Jordan'],
           notes:'Breakout workshops (3 groups), held over two days — 3 flip charts, markers.' }
       ] };
     g.itineraryNotes = 'Thu 9/24\n2:30 PM — Arrival + check-in (Sunrise Resort lobby)\n6:30 PM — Welcome dinner (Sunrise Hall)\n\n' +
@@ -1009,7 +1009,8 @@
       checkGroup('Table Type', base+'.tableTypes', TABLE_TYPES, s.tableTypes) +
       checkGroup('Chair Type', base+'.chairTypes', CHAIR_TYPES, s.chairTypes) +
       checkGroup('AV / Equipment needs', base+'.avNeeds', AV_OPTIONS, s.avNeeds) +
-      checkGroup('Staff', base+'.staff', STAFF_OPTIONS, s.staff) +
+      checkGroup('Staff Set-Up', base+'.staff', STAFF_OPTIONS, s.staff) +
+      checkGroup('Staff Take-Down/Cleaning', base+'.staffTeardown', STAFF_OPTIONS, s.staffTeardown) +
       '<div class="field" style="margin-top:10px;"><span>Notes</span><textarea class="autogrow" data-bind="'+base+'.notes">'+esc(s.notes||'')+'</textarea></div>' +
     '</div>';
   }
@@ -1288,7 +1289,8 @@
       '<div class="kv" style="margin-bottom:8px;"><span class="kv-label">Table Type</span>'+chipList(s.tableTypes)+'</div>' +
       '<div class="kv" style="margin-bottom:8px;"><span class="kv-label">Chair Type</span>'+chipList(s.chairTypes)+'</div>' +
       '<div class="kv" style="margin-bottom:8px;"><span class="kv-label">AV / Equipment</span>'+chipList(s.avNeeds)+'</div>' +
-      '<div class="kv" style="margin-bottom:8px;"><span class="kv-label">Staff</span>'+chipList(s.staff)+'</div>' +
+      '<div class="kv" style="margin-bottom:8px;"><span class="kv-label">Staff Set-Up</span>'+chipList(s.staff)+'</div>' +
+      '<div class="kv" style="margin-bottom:8px;"><span class="kv-label">Staff Take-Down/Cleaning</span>'+chipList(s.staffTeardown)+'</div>' +
       (s.notes? '<p class="prose" style="margin-top:8px;">'+esc(s.notes)+'</p>' : '') +
     '</div>';
   }
@@ -1509,7 +1511,8 @@
     if(s.tableTypes && s.tableTypes.length) lines.push('Tables: ' + s.tableTypes.join(', ') + (s.numTables ? ' (' + s.numTables + ')' : ''));
     if(s.chairTypes && s.chairTypes.length) lines.push('Chairs: ' + s.chairTypes.join(', ') + (s.numChairs ? ' (' + s.numChairs + ')' : ''));
     if(s.avNeeds && s.avNeeds.length) lines.push('AV/Equipment: ' + s.avNeeds.join(', '));
-    if(s.staff && s.staff.length) lines.push('Staff: ' + s.staff.join(', '));
+    if(s.staff && s.staff.length) lines.push('Staff Set-Up: ' + s.staff.join(', '));
+    if(s.staffTeardown && s.staffTeardown.length) lines.push('Staff Take-Down/Cleaning: ' + s.staffTeardown.join(', '));
     if(s.notes) lines.push('Notes: ' + s.notes);
     const bodyText = lines.length ? lines.join('   |   ') : 'No details recorded.';
     doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
