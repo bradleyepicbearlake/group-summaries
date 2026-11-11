@@ -2634,6 +2634,27 @@ window.LayoutPlanner = (function(){
   document.getElementById('navCustomers').addEventListener('click', function(){ state.view='customers'; draft=null; render(); });
   document.getElementById('navNew').addEventListener('click', startNew);
 
+  // Opened from Basecamp CRM with "Create group summary": the link ends in #crm=<data>.
+  // Start a new summary pre-filled with that data. Nothing is saved until you press Save.
+  function startFromCrm(){
+    const m = (location.hash || '').match(/^#crm=([A-Za-z0-9_-]+)$/);
+    if(!m) return;
+    try{
+      let b = m[1].replace(/-/g,'+').replace(/_/g,'/');
+      while(b.length % 4) b += '=';
+      const data = JSON.parse(decodeURIComponent(escape(atob(b))));
+      const g = emptyGroup();
+      Object.keys(data).forEach(function(k){
+        if(g[k] && typeof g[k] === 'object' && !Array.isArray(g[k]) && data[k] && typeof data[k] === 'object' && !Array.isArray(data[k])) Object.assign(g[k], data[k]);
+        else g[k] = data[k];
+      });
+      delete g.id; delete g.status;
+      draft = g; state.view = 'edit';
+    }catch(err){ console.warn('Group Summaries: could not read the summary sent from Basecamp CRM', err); }
+    try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+  }
+  startFromCrm();
+
   initStorage();
 })();
 </script>
